@@ -19,7 +19,7 @@ scene.background = new THREE.Color("#090c1d");
 scene.fog = new THREE.FogExp2("#0c1027", 0.022);
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
-camera.position.set(0, 10.5, 17.8);
+camera.position.set(0, 10.8, 25.5);
 camera.lookAt(0, 1.4, 0);
 
 scene.add(new THREE.HemisphereLight("#b7c8ff", "#222032", 2.25));
@@ -51,10 +51,12 @@ scene.add(arena);
 const arenaSurfaces = [];
 let portalDisc;
 let portalRings = [];
+let fighterPreview = null;
+let secretPowerUp = null;
 let battleMode = "cpu";
 let selectedFighter = "bumble";
-let arenaIndex = 0;
 const arenaCount = 200;
+let arenaIndex = Math.floor(Math.random() * arenaCount);
 let floorRadius = 8.15;
 let secretSeal = null;
 let secretPortalPending = false;
@@ -140,7 +142,7 @@ const characters = {
     name: "Entity.exe",
     palette: { primary: "#71284e", dark: "#160c25", trim: "#ff4f8d", accent: "#b774ff" },
     speed: 5.5,
-    power: 1.55,
+    power: 1.2,
     build: "heavy",
     special: "pulse"
   }
@@ -269,6 +271,8 @@ function createSecretSeal(theme) {
 }
 
 function createArena(index = arenaIndex) {
+  fighterPreview = null;
+  secretPowerUp = null;
   disposeObject(arena);
   arena.clear();
   portalRings = [];
@@ -289,12 +293,12 @@ function createArena(index = arenaIndex) {
   const stone = material(theme.stone, 0.72, 0.18);
   const floor = material(theme.floor, 0.52, 0.24);
   const trim = material(theme.trim, 0.3, 0.46, { emissive: theme.trim, emissiveIntensity: 0.48 });
-  floorRadius = 7.7 + random() * 0.9;
+  floorRadius = 9.5 + random() * 1.4;
   const platform = addMesh(arena, new THREE.CylinderGeometry(floorRadius + 0.55, floorRadius - 0.35, 0.75, 48), stone, [0, -0.35, 0]);
   platform.receiveShadow = true;
   addMesh(arena, new THREE.CircleGeometry(floorRadius, 48), floor, [0, 0.035, 0]).rotation.x = -Math.PI / 2;
 
-  for (const radius of [3.1, floorRadius * 0.74, floorRadius - 0.1]) {
+  for (const radius of [4, floorRadius * 0.74, floorRadius - 0.1]) {
     const ring = addMesh(arena, new THREE.TorusGeometry(radius, radius > floorRadius - 0.2 ? 0.075 : 0.025, 8, 72), trim, [0, 0.08, 0]);
     ring.rotation.x = Math.PI / 2;
   }
@@ -310,10 +314,10 @@ function createArena(index = arenaIndex) {
   const stageCount = 1 + (layout % 3);
   for (let i = 0; i < stageCount; i += 1) {
     const angle = (i / stageCount) * Math.PI * 2 + random() * 0.38;
-    const x = Math.cos(angle) * (2.4 + random() * 1.2);
-    const z = Math.sin(angle) * (2.1 + random() * 1.3);
-    const width = 1.05 + random() * 0.35;
-    const depth = 0.78 + random() * 0.38;
+    const x = Math.cos(angle) * (floorRadius * 0.31 + random() * 1.25);
+    const z = Math.sin(angle) * (floorRadius * 0.29 + random() * 1.2);
+    const width = 1.2 + random() * 0.5;
+    const depth = 0.92 + random() * 0.42;
     const top = 0.76 + random() * 0.46;
     const stage = addMesh(arena, new THREE.BoxGeometry(width * 2, 0.24, depth * 2), trim, [x, top - 0.12, z]);
     addMesh(arena, new THREE.BoxGeometry(width * 1.9, 0.035, depth * 1.9), floor, [x, top + 0.018, z]);
@@ -349,9 +353,11 @@ function createArena(index = arenaIndex) {
     const obelisk = addMesh(arena, new THREE.OctahedronGeometry(2.2, 1), material(secretTheme.trim, 0.2, 0.5, { emissive: secretTheme.glow, emissiveIntensity: 1.2 }), [0, 2.2, -4]);
     obelisk.scale.set(0.8, 1.6, 0.5);
     obelisk.rotation.y = Math.PI / 4;
+    createSecretPowerUp();
   } else if (hasSecretSeal(index)) {
     createSecretSeal(theme);
   }
+  if (!matchActive && fighters.length === 0) updateFighterPreview(selectedFighter);
 }
 
 function createLimb(parent, palette, x, y, z, length, radius, rotationZ = 0) {
@@ -444,8 +450,30 @@ function createFighterVisual(kind) {
       const spike = addMesh(body, new THREE.ConeGeometry(0.17, 0.4, 5), trimMat, [0, 1.92, z]);
       spike.rotation.z = Math.PI;
     }
+  } else if (kind === "entity") {
+    addMesh(body, new THREE.CapsuleGeometry(0.23, 1.1, 5, 10), mainMat, [0, 1.52, 0], [1, 1.05, 0.82]);
+    addMesh(body, new THREE.SphereGeometry(0.34, 16, 12), mainMat, [0, 2.45, 0.02], [0.9, 1.08, 0.82]);
+    addMesh(body, new THREE.BoxGeometry(0.34, 0.09, 0.08), darkMat, [0, 2.38, 0.28]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.SphereGeometry(0.075, 10, 8), trimMat, [side * 0.13, 2.49, 0.28]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.32, 1.94, 0, 0.68, 0.095, side * -0.15));
+      animatedLimbs.push(createLimb(body, palette, side * 0.55, 1.39, 0.02, 0.72, 0.085, side * 0.12));
+      animatedLimbs.push(createLimb(body, palette, side * 0.14, 0.82, 0, 0.66, 0.11, side * 0.08));
+      animatedLimbs.push(createLimb(body, palette, side * 0.17, 0.32, 0.03, 0.58, 0.085, side * -0.08));
+      addMesh(body, new THREE.BoxGeometry(0.22, 0.12, 0.32), darkMat, [side * 0.18, 0.08, 0.16]);
+
+      for (const y of [0.92, 1.42, 1.91]) {
+        const spike = addMesh(body, new THREE.ConeGeometry(0.14, 0.58, 5), trimMat, [side * 0.34, y, -0.01]);
+        spike.rotation.z = -side * Math.PI / 2;
+      }
+    }
+    for (const y of [0.95, 1.3, 1.65, 2.02]) {
+      const spine = addMesh(body, new THREE.ConeGeometry(0.14, 0.55, 5), trimMat, [0, y, -0.24]);
+      spine.rotation.x = -Math.PI / 2;
+    }
+    addMesh(body, new THREE.OctahedronGeometry(0.21, 0), trimMat, [0, 1.52, 0.29]);
   } else {
-    const heavy = characters[kind].build === "heavy" || kind === "entity";
+    const heavy = characters[kind].build === "heavy";
     const width = heavy ? 0.58 : 0.42;
     addMesh(body, new THREE.CapsuleGeometry(width, heavy ? 0.72 : 0.64, 5, 10), mainMat, [0, 1.08, 0]);
     addMesh(body, new THREE.SphereGeometry(heavy ? 0.48 : 0.39, 16, 12), mainMat, [0, 1.92, 0.02]);
@@ -479,22 +507,10 @@ function createFighterVisual(kind) {
         const fin = addMesh(body, new THREE.ConeGeometry(0.22, 0.68, 5), trimMat, [side * 0.49, 1.36, -0.18]);
         fin.rotation.z = side * Math.PI / 2;
       }
-    } else if (kind === "entity") {
-      for (const side of [-1, 1]) {
-        const horn = addMesh(body, new THREE.ConeGeometry(0.2, 0.66, 6), trimMat, [side * 0.34, 2.32, -0.05]);
-        horn.rotation.z = side * -0.42;
-      }
-      addMesh(body, new THREE.BoxGeometry(0.52, 0.11, 0.12), darkMat, [0, 1.89, 0.43]);
-      for (const side of [-1, 1]) {
-        addMesh(body, new THREE.SphereGeometry(0.075, 10, 8), trimMat, [side * 0.15, 1.9, 0.51]);
-      }
-      const halo = addMesh(body, new THREE.TorusGeometry(0.76, 0.055, 8, 32), trimMat, [0, 2.48, 0]);
-      halo.rotation.x = Math.PI / 2;
-      halo.userData.spin = 0.7;
     }
   }
 
-  if (kind === "entity") root.scale.setScalar(1.55);
+  if (kind === "entity") root.scale.setScalar(1.4);
   root.userData.baseScale = root.scale.clone();
 
   root.traverse((child) => {
@@ -506,9 +522,38 @@ function createFighterVisual(kind) {
   return root;
 }
 
+function updateFighterPreview(kind) {
+  if (fighterPreview) {
+    disposeObject(fighterPreview);
+    arena.remove(fighterPreview);
+  }
+  fighterPreview = createFighterVisual(kind);
+  fighterPreview.scale.multiplyScalar(kind === "entity" ? 1.08 : 1.24);
+  fighterPreview.position.set(8.3, 0.08, 0.3);
+  fighterPreview.userData.preview = true;
+  arena.add(fighterPreview);
+  document.querySelector("#preview-note").textContent = `${characters[kind].name} is warming up beside the portal.`;
+}
+
+function createSecretPowerUp() {
+  const powerUp = new THREE.Group();
+  powerUp.position.set(-2.4, 0.08, 0.9);
+  const glow = new THREE.MeshBasicMaterial({ color: "#ffe57c" });
+  addMesh(powerUp, new THREE.TorusGeometry(0.56, 0.055, 8, 28), glow, [0, 0.72, 0]).rotation.x = Math.PI / 2;
+  const orb = addMesh(powerUp, new THREE.IcosahedronGeometry(0.38, 1), new THREE.MeshBasicMaterial({ color: "#fff2a1" }), [0, 1.05, 0]);
+  orb.userData.spin = 2.1;
+  powerUp.userData.orb = orb;
+  arena.add(powerUp);
+  secretPowerUp = powerUp;
+}
+
 function makeFighter(kind, index) {
   const visual = createFighterVisual(kind);
   if (kind === "dinosaur") visual.scale.setScalar(1.12);
+  const powerAura = addMesh(visual, new THREE.TorusGeometry(0.9, 0.045, 8, 24), new THREE.MeshBasicMaterial({ color: "#ffe57c", transparent: true, opacity: 0.9 }), [0, 1.18, 0], [1.35, 1, 1.35]);
+  powerAura.rotation.x = Math.PI / 2;
+  powerAura.visible = false;
+  visual.userData.powerAura = powerAura;
   const x = index === 0 ? -3.4 : 3.4;
   visual.position.set(x, 0.08, index === 0 ? 1.1 : -0.6);
   arena.add(visual);
@@ -516,11 +561,17 @@ function makeFighter(kind, index) {
     kind, visual, x, y: 0.08, z: index === 0 ? 1.1 : -0.6,
     vx: 0, vy: 0, vz: 0, facing: index === 0 ? 1 : -1,
     damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
-    invulnerable: 0, attackPose: 0, hitFlash: 0, respawn: 0
+    invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
+    attackPose: 0, hitFlash: 0, powerBoost: 0, respawn: 0
   };
 }
 
 function clearFighters() {
+  if (fighterPreview) {
+    disposeObject(fighterPreview);
+    arena.remove(fighterPreview);
+    fighterPreview = null;
+  }
   for (const fighter of fighters) {
     disposeObject(fighter.visual);
     arena.remove(fighter.visual);
@@ -565,7 +616,7 @@ function updateArenaLabel() {
 function updateControlsHint() {
   const controls = battleMode === "cpu"
     ? "Move: ←/→ or A/D · Jump: ↑ / Space · Depth: ↓ / W/S · Fight: J / Enter · Special: K / Shift"
-    : "Local: A/D + W/S + Space/J/K · Arrows + Enter/Shift";
+    : "Local (half speed): A/D + W/S + Space/J/K · Arrows + Enter/Shift";
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
 }
@@ -589,7 +640,12 @@ function changeArena(offset) {
   updateArenaLabel();
 }
 
-function startMatch(opponentOverride = null) {
+function startMatch(opponentOverride = null, randomizeArena = false) {
+  if (randomizeArena && !hiddenRealmActive) {
+    arenaIndex = Math.floor(Math.random() * arenaCount);
+    createArena(arenaIndex);
+    updateArenaLabel();
+  }
   clearInputState();
   clearFighters();
   const selectedIndex = regularCharacterIds.indexOf(selectedFighter);
@@ -625,8 +681,8 @@ function beginSecretChallenge() {
   createArena(arenaIndex);
   updateArenaLabel();
   startMatch("entity");
-  document.querySelector("#battle-status").textContent = "ENTITY.EXE — FINAL BOSS";
-  document.querySelector("#screen-reader-status").textContent = "The Entity.exe final boss challenge begins in the hidden realm.";
+  document.querySelector("#battle-status").textContent = "ENTITY.EXE — FIND THE POWER-UP!";
+  document.querySelector("#screen-reader-status").textContent = "The Entity.exe final boss challenge begins in the hidden realm. Find the glowing power-up.";
 }
 
 function restoreFromSecretRealm() {
@@ -650,6 +706,7 @@ function showSelection() {
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = false;
   clearFighters();
+  updateFighterPreview(selectedFighter);
 }
 
 function showPortal() {
@@ -662,6 +719,7 @@ function showPortal() {
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = false;
   clearFighters();
+  updateFighterPreview(selectedFighter);
 }
 
 function finishMatch(winnerIndex, reason) {
@@ -695,7 +753,14 @@ function launchProjectile(fighter) {
   const halo = addMesh(projectile, new THREE.TorusGeometry(0.39, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color: "#fff1a6" }), [0, 0, 0]);
   halo.rotation.x = Math.PI / 2;
   projectile.userData.spin = 4;
-  projectiles.push({ mesh: projectile, owner: fighter, vx: fighter.facing * 13, life: 1.5, damage: 9, power: characters[fighter.kind].power });
+  projectiles.push({
+    mesh: projectile,
+    owner: fighter,
+    vx: fighter.facing * 13,
+    life: 1.5,
+    damage: 9,
+    power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
+  });
 }
 
 function spawnImpact(target, heavy) {
@@ -762,7 +827,8 @@ function attack(fighter, target, special = false) {
   const inReach = Math.hypot(dx, dz) < (special ? 2.6 : 2.15);
   const inFront = dx * fighter.facing > -0.65;
   if (inReach && Math.abs(dz) < 1.75 && inFront) {
-    hitTarget(fighter, target, (special ? 12 : 7) * characters[fighter.kind].power, special ? 5 : 3.2);
+    const boost = fighter.powerBoost > 0 ? 1.7 : 1;
+    hitTarget(fighter, target, (special ? 12 : 7) * characters[fighter.kind].power * boost, special ? 5.8 : 3.8);
   }
   if (!special) tryActivateSecretSeal(fighter);
 }
@@ -828,7 +894,7 @@ function readInput(fighter, index, delta) {
     }
   }
 
-  const speed = characters[fighter.kind].speed;
+  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1);
   fighter.vx = (fighter.vx + horizontal * speed * delta * 8) * Math.exp(-(horizontal ? 3.2 : 7) * delta);
   fighter.vz = (fighter.vz + depth * speed * delta * 6) * Math.exp(-(depth ? 3.8 : 7) * delta);
   fighter.vx = THREE.MathUtils.clamp(fighter.vx, -speed, speed);
@@ -851,6 +917,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
   fighter.hitFlash = Math.max(0, fighter.hitFlash - delta);
+  fighter.powerBoost = Math.max(0, fighter.powerBoost - delta);
   if (fighter.respawn > 0) {
     fighter.respawn -= delta;
     if (fighter.respawn <= 0) respawn(fighter, index);
@@ -863,6 +930,13 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.x += fighter.vx * delta;
   fighter.y += fighter.vy * delta;
   fighter.z += fighter.vz * delta;
+  if (index === 0 && secretPowerUp && Math.hypot(fighter.x - secretPowerUp.position.x, fighter.z - secretPowerUp.position.z) < 1.25) {
+    secretPowerUp.visible = false;
+    secretPowerUp = null;
+    fighter.powerBoost = 8;
+    document.querySelector("#battle-status").textContent = "SECRET POWER-UP! Your next attacks hit harder!";
+    document.querySelector("#screen-reader-status").textContent = "Secret power-up collected. Your attacks are stronger for eight seconds.";
+  }
 
   const edgeDistance = Math.hypot(fighter.x, fighter.z * 1.08);
   fighter.grounded = false;
@@ -895,6 +969,10 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
   fighter.visual.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
   fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(1 + fighter.hitFlash * 0.7);
+  if (fighter.visual.userData.powerAura) {
+    fighter.visual.userData.powerAura.visible = fighter.powerBoost > 0;
+    fighter.visual.userData.powerAura.rotation.z += delta * 1.8;
+  }
   const body = fighter.visual.userData.body;
   const movement = Math.min(1, Math.hypot(fighter.vx, fighter.vz) / characters[fighter.kind].speed);
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
@@ -975,9 +1053,11 @@ function updateClock(delta) {
 
 function updateCamera(delta) {
   const centerX = fighters.length === 2 ? (fighters[0].x + fighters[1].x) / 2 : 0;
+  const fighterSpread = fighters.length === 2 ? Math.abs(fighters[0].x - fighters[1].x) : 0;
   const targetX = THREE.MathUtils.clamp(centerX * 0.42, -4.5, 4.5);
   camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.y = THREE.MathUtils.damp(camera.position.y, 10.5, 2, delta) + (Math.random() - 0.5) * cameraShake;
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, 11.2, 2, delta) + (Math.random() - 0.5) * cameraShake;
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, 24 + Math.min(fighterSpread, 8) * 0.55, 1.5, delta);
   camera.lookAt(targetX * 0.68, 1.35, 0);
 }
 
@@ -1000,6 +1080,10 @@ function animatePortal(elapsed, delta) {
   if (secretSeal?.userData.core) {
     secretSeal.userData.core.rotation.y += delta * secretSeal.userData.core.userData.spin;
     secretSeal.userData.core.position.y = 0.66 + Math.sin(elapsed * 2.4) * 0.09;
+  }
+  if (secretPowerUp?.userData.orb) {
+    secretPowerUp.userData.orb.rotation.y += delta * secretPowerUp.userData.orb.userData.spin;
+    secretPowerUp.userData.orb.position.y = 1.05 + Math.sin(elapsed * 2.8) * 0.12;
   }
   portalLight.intensity = 16 + Math.sin(elapsed * 2.4) * 3;
   cyanLight.intensity = 6 + Math.sin(elapsed * 1.6 + 1) * 2;
@@ -1031,6 +1115,10 @@ function frame(timestamp = 0) {
   } else if (fighters.length === 0) {
     camera.position.x = THREE.MathUtils.damp(camera.position.x, 0, 0.6, delta);
     camera.lookAt(0, 1.4, 0);
+    if (fighterPreview) {
+      fighterPreview.position.y = 0.08 + Math.sin(elapsed * 1.8) * 0.08;
+      fighterPreview.rotation.y = Math.sin(elapsed * 0.55) * 0.18;
+    }
   }
   justPressed.clear();
   renderer.render(scene, camera);
@@ -1044,7 +1132,7 @@ document.querySelector('[data-fighter="entity"]').hidden = !entityUnlocked;
 document.querySelector("#fighter-count").textContent = entityUnlocked ? "09 FIGHTERS" : "08 FIGHTERS";
 
 document.querySelector("#enter-portal").addEventListener("click", showSelection);
-document.querySelector("#quick-fight").addEventListener("click", () => startMatch());
+document.querySelector("#quick-fight").addEventListener("click", () => startMatch(null, true));
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
 document.querySelector("#start-match").addEventListener("click", () => startMatch());
 document.querySelector("#leave-battle").addEventListener("click", showSelection);
@@ -1063,6 +1151,7 @@ document.querySelector("#arena-random").addEventListener("click", () => changeAr
 document.querySelectorAll(".fighter-card").forEach((card) => {
   card.addEventListener("click", () => {
     selectedFighter = card.dataset.fighter;
+    updateFighterPreview(selectedFighter);
     document.querySelectorAll(".fighter-card").forEach((item) => {
       const selected = item === card;
       item.classList.toggle("selected", selected);

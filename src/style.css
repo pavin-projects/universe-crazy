@@ -40,13 +40,14 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .portal-hint { margin: 13px 0 0; color: #9698b0; font-size: .76rem; }
 .portal-footer { color: #8587a2; font-size: .62rem; }
 .portal-footer i { padding: 0 8px; color: var(--cyan); font-style: normal; }
-.select-screen { inset: auto auto 50% 50%; width: min(720px, calc(100% - 34px)); max-height: calc(100vh - 34px); padding: 22px clamp(18px, 4vw, 36px) 25px; transform: translate(-50%, 50%); overflow: auto; border: 1px solid #a798ff55; border-radius: 24px; background: #101329ee; box-shadow: 0 22px 90px #000b, inset 0 0 50px #826aff11; backdrop-filter: blur(18px); }
+.select-screen { inset: auto auto 50% clamp(17px, 4vw, 54px); width: min(690px, calc(100% - 330px)); max-height: calc(100vh - 34px); padding: 22px clamp(18px, 4vw, 36px) 25px; transform: translateY(50%); overflow: auto; border: 1px solid #a798ff55; border-radius: 24px; background: #101329ee; box-shadow: 0 22px 90px #000b, inset 0 0 50px #826aff11; backdrop-filter: blur(18px); }
 .screen-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .text-button { min-height: 35px; padding: 0 11px; background: transparent; color: #d3d0ed; font-size: .82rem; }
 .text-button:hover { color: var(--cyan); }
 .build-label { color: #81849f; font-size: .64rem; font-weight: 700; letter-spacing: .12em; }
 .select-heading { margin: 20px 0 15px; }
 .select-heading h2 { margin: 5px 0 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(1.8rem, 4vw, 2.5rem); letter-spacing: -.06em; }
+.preview-note { margin: 6px 0 0; color: #b6b5d0; font-size: .73rem; }
 .fighter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .fighter-card { position: relative; display: grid; grid-template-columns: 90px 1fr; align-items: center; min-height: 124px; overflow: hidden; padding: 12px; border: 1px solid #393d5c; border-radius: 16px; background: #171a34; color: var(--ink); cursor: pointer; text-align: left; transition: border-color .18s ease, transform .18s ease, background .18s ease; }
 .fighter-card:hover { transform: translateY(-2px); border-color: #9e8aff99; }
@@ -184,6 +185,10 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
   .jump-control { min-width: 55px !important; min-height: 55px !important; padding: 0 5px; font-size: .58rem !important; }
   .touch-attacks button:not(.fight-control) { min-width: 62px; min-height: 62px; font-size: .58rem; }
   .touch-attacks .fight-control { min-width: 70px; min-height: 70px; font-size: .68rem; }
+}
+
+@media (max-width: 900px) {
+  .select-screen { left: 50%; width: min(720px, calc(100% - 34px)); transform: translate(-50%, 50%); }
 }
 
 @media (hover: none), (pointer: coarse) {
