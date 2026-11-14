@@ -1,6 +1,6 @@
 # Universe Crazy
 
-An original, browser-based 2.5D arena fighter. Choose from eight original fighters, including the artistic frog Moss Hopper and dinosaur Rex Rumble, then battle across larger 200-arena layouts and ten visual themes. Quick Fight shuffles to a random arena; fighter select lets you choose one. Find and strike glowing seals in a few arenas to open the hidden Null Abyss, collect its power-up, and challenge Entity.exe, the spiky four-stock final boss. Defeating Entity.exe permanently unlocks its fighter skin in this browser.
+An original, browser-based 2.5D arena fighter. The title screen opens on a continuously turning spiral galaxy with drifting, rotating planets. Choose from eight original fighters, inspect their full-turn 3D previews and animated idle poses, then fight in a four-way free-for-all against three CPUs or play locally with up to four people. Fighters have articulated limbs, animated movement, blinking eyes, and opening speech bubbles. Each arena has climbable stairs, elevated platforms, themed scenery, and a fall into space that costs a stock. Find and strike glowing seals in a few arenas to open the hidden Null Abyss and challenge Entity.exe. Its portal stays closed until Entity.exe is defeated; winning opens the exit and permanently unlocks its fighter skin in this browser.
 
 The character names and geometry here are a starter interpretation. Replace the procedural models and expand the roster/maps when the original art and design details are ready. This project uses its own characters, visuals, UI, and rules; it does not include third-party game assets.
 
@@ -22,13 +22,13 @@ npm run preview
 
 ## Controls
 
-In solo mode, use either arrows or WASD for movement. Arrow Up and Space jump; Arrow Down and S/W adjust depth. J or Enter fights, and K or Shift uses a special. On touch screens, drag the virtual joystick to move and adjust depth; use the separate JUMP, FIGHT, and SPECIAL buttons. Strike a glowing seal on select maps to open the hidden arena. The fighter stops when keys are released; the CPU opponent moves and attacks by design.
+In solo mode, use WASD or the arrow keys to move; W/S or Up/Down adjust depth, and Space or Up jumps. J or Enter fights, and K or right Shift uses a special. The three CPU rivals fight each other as well as you. Every fighter has a dedicated 100-HP bar; a depleted bar costs a stock and the fighter respawns, while running or being knocked off the arena also costs a stock. On touch screens, drag the virtual joystick to move and adjust depth; use the separate JUMP, FIGHT, and SPECIAL buttons. Strike a glowing seal on select maps to open the hidden arena. The fighter stops when keys are released; CPU rivals move and attack by design.
 
-In local mode, both players move at half speed: `A`/`D` move, `W`/`S` adjust depth, `Space` jumps, and `J`/`K` attack. The arrow keys move, Arrow Up jumps, Arrow Down adjusts depth, and `Enter`/right `Shift` attack. The touch joystick controls player one's movement; the on-screen buttons jump and attack.
+Local four-player mode runs at half speed. Player 1 uses `A`/`D` and `W`/`S`, `Space` to jump, and `J`/`K` to fight/use a special. Player 2 uses the arrow keys, `Enter`, and right `Shift`. Player 3 uses `F`/`H` and `T`/`G`, `R` to jump, and `Y`/`U` to fight/use a special. Player 4 uses numpad `4`/`6` and `8`/`5`, `0` to jump, and `1`/`2` to fight/use a special. Touch controls operate Player 1.
 
-Use **FIGHT NOW** on the title screen to start immediately, or enter fighter selection and press **FIGHT!** to choose a character first. Use the previous/next or Random controls there to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
+Press **START** to open fighter selection, then press **FIGHT!** to begin. Use the previous/next or Random controls to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
 
-The renderer is tuned for steadier performance on everyday devices: it caps display resolution and frame rate, skips expensive real-time shadows, and pauses while the tab is hidden. Keyboard state is cleared on focus changes and match transitions to prevent stuck movement.
+The renderer is tuned for steadier performance on everyday devices: it caps display resolution and frame rate, skips expensive real-time shadows, and pauses while the tab is hidden. If WebGL cannot start or is interrupted, the game displays a recovery message instead of leaving a blank screen. Keyboard state is cleared on focus changes and match transitions to prevent stuck movement.
 
 ## Host on GitHub Pages
 

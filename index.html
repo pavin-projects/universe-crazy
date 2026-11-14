@@ -4,34 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#090c1d">
-    <meta name="description" content="Step through the portal and battle in Universe Crazy, an original 3D arena fighter.">
-    <title>Universe Crazy — Enter the portal</title>
+    <meta name="description" content="Enter Universe Crazy, an original 2.5D arena fighter.">
+    <title>Universe Crazy</title>
+    <link rel="stylesheet" href="./src/style.css">
+    <style>html, body { background: #090c1d; color: #f7f5ff; }</style>
   </head>
   <body>
     <div id="scene" aria-hidden="true"></div>
+    <section class="graphics-error" id="graphics-error" role="alert" aria-labelledby="graphics-error-title" hidden>
+      <div class="graphics-error-card">
+        <p class="eyebrow">GRAPHICS INTERRUPTED</p>
+        <h2 id="graphics-error-title">Universe Crazy needs 3D graphics</h2>
+        <p id="graphics-error-message">The browser paused the 3D scene. Close other 3D tabs or reload the game to try again.</p>
+        <button class="primary-button" id="retry-graphics" type="button">RELOAD AND RETRY</button>
+      </div>
+    </section>
     <main class="game-ui">
       <section class="screen portal-screen" id="portal-screen" aria-labelledby="game-title">
-        <div class="portal-brand">
-          <span class="brand-orbit" aria-hidden="true">✦</span>
-          <span>AN ORIGINAL ARENA FIGHTER</span>
-        </div>
         <div class="portal-copy">
-          <p class="eyebrow">THE UNIVERSE IS YOUR ARENA</p>
           <h1 id="game-title">UNIVERSE<br><span>CRAZY</span></h1>
-          <p class="intro">Pick a fighter, find a secret power-up, and try not to get bonked.</p>
-          <button class="primary-button" id="enter-portal" type="button">Start game <span aria-hidden="true">↗</span></button>
-          <button class="quick-fight-button" id="quick-fight" type="button">FIGHT NOW <span aria-hidden="true">→</span></button>
-          <p class="portal-hint">A new world is waiting on the other side. Some arenas hide secrets.</p>
+          <button class="primary-button" id="enter-portal" type="button">START <span aria-hidden="true">↗</span></button>
         </div>
-        <div class="portal-footer">
-          <span>EARLY ACCESS PROTOTYPE</span>
-          <span>200 ARENAS <i aria-hidden="true">•</i> <span id="fighter-count">08 FIGHTERS</span></span>
-        </div>
+        <span class="sr-only" id="fighter-count">08 FIGHTERS</span>
       </section>
 
       <section class="screen select-screen" id="select-screen" aria-labelledby="select-title" hidden>
         <div class="screen-topline">
-          <button class="text-button" id="back-to-portal" type="button">← Portal</button>
+          <button class="text-button" id="back-to-portal" type="button">← Title</button>
           <span class="eyebrow">FIGHTER SELECT</span>
           <span class="build-label">BUILD 0.3</span>
         </div>
@@ -103,42 +102,63 @@
           </div>
         </div>
         <div class="mode-row">
-          <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. CPU</strong></div>
+        <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. 3 CPUs</strong></div>
           <button class="secondary-button" id="toggle-mode" type="button" aria-label="Change battle mode">Change mode</button>
         </div>
         <div class="select-actions">
-          <p id="controls-hint">Move: ←/→ or A/D <span>·</span> Jump: ↑ / Space <span>·</span> Depth: ↓ / W/S <span>·</span> Strike: J / Enter <span>·</span> Special: K / Shift</p>
+        <p id="controls-hint">Fight three CPU rivals. Move: WASD <span>·</span> Jump: Space <span>·</span> Fight: J <span>·</span> Special: K</p>
           <button class="primary-button" id="start-match" type="button" aria-label="Fight">FIGHT! <span aria-hidden="true">→</span></button>
         </div>
       </section>
 
       <section class="battle-hud" id="battle-hud" hidden aria-label="Match status">
-        <div class="hud-player hud-player-one">
+        <div class="hud-player hud-player-one" id="player-one-panel">
           <span class="hud-dot" aria-hidden="true"></span>
           <div><small>PLAYER 1</small><strong id="player-one-name">Bumble Boy</strong></div>
           <strong class="damage" id="player-one-damage">0%</strong>
+          <small class="hp-label">HP</small>
+          <span class="hp-bar" id="player-one-hp" role="meter" aria-label="Player 1 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
           <span class="stocks" id="player-one-stocks" aria-label="3 stocks">● ● ●</span>
         </div>
-        <div class="match-clock">
-          <span id="battle-arena-name">SKYFORGE GATE</span>
-          <strong id="match-clock">3:00</strong>
-          <small id="battle-status" role="status" aria-live="polite">FIGHT!</small>
-        </div>
-        <div class="hud-player hud-player-two">
+        <div class="hud-player hud-player-two" id="player-two-panel">
           <span class="hud-dot" aria-hidden="true"></span>
           <div><small id="player-two-label">CPU</small><strong id="player-two-name">Robot Boy</strong></div>
           <strong class="damage" id="player-two-damage">0%</strong>
+          <small class="hp-label">HP</small>
+          <span class="hp-bar" id="player-two-hp" role="meter" aria-label="Player 2 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
           <span class="stocks" id="player-two-stocks" aria-label="3 stocks">● ● ●</span>
+        </div>
+        <div class="match-clock">
+        <span id="battle-arena-name">SKYFORGE GATE</span>
+        <strong id="match-clock">3:00</strong>
+        <small id="battle-status" role="status" aria-live="polite">FIGHT!</small>
+        </div>
+        <div class="hud-player hud-player-three" id="player-three-panel">
+        <span class="hud-dot" aria-hidden="true"></span>
+        <div><small id="player-three-label">CPU 2</small><strong id="player-three-name">Nova Fox</strong></div>
+        <strong class="damage" id="player-three-damage">0%</strong>
+        <small class="hp-label">HP</small>
+        <span class="hp-bar" id="player-three-hp" role="meter" aria-label="Player 3 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
+        <span class="stocks" id="player-three-stocks" aria-label="3 stocks">● ● ●</span>
+        </div>
+        <div class="hud-player hud-player-four" id="player-four-panel">
+        <span class="hud-dot" aria-hidden="true"></span>
+        <div><small id="player-four-label">CPU 3</small><strong id="player-four-name">Moss Hopper</strong></div>
+        <strong class="damage" id="player-four-damage">0%</strong>
+        <small class="hp-label">HP</small>
+        <span class="hp-bar" id="player-four-hp" role="meter" aria-label="Player 4 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
+        <span class="stocks" id="player-four-stocks" aria-label="3 stocks">● ● ●</span>
         </div>
         <button class="hud-exit" id="leave-battle" type="button">Exit match</button>
       </section>
 
       <section class="match-end" id="match-end" hidden aria-labelledby="winner-title">
-        <p class="eyebrow">MATCH COMPLETE</p>
+        <p class="eyebrow" id="match-end-status">MATCH COMPLETE</p>
         <h2 id="winner-title">VICTORY</h2>
         <p id="winner-message">Bumble Boy takes the arena.</p>
         <div class="end-actions">
           <button class="primary-button" id="rematch" type="button">Rematch <span aria-hidden="true">↻</span></button>
+          <button class="secondary-button" id="return-through-portal" type="button" hidden>Enter portal</button>
           <button class="secondary-button" id="return-to-select" type="button">Choose fighters</button>
         </div>
       </section>
