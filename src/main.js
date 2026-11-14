@@ -599,24 +599,6 @@ function createArena(index = arenaIndex) {
     ring.rotation.x = Math.PI / 2;
   }
 
-  const borderMaterial = material(theme.trim, 0.34, 0.38, { emissive: theme.glow, emissiveIntensity: 0.22 });
-  const gateAngles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
-  const borderRadius = floorRadius - 0.16;
-  const borderSegments = 36;
-  const borderSegmentLength = (Math.PI * 2 * borderRadius / borderSegments) * 0.84;
-  for (let segment = 0; segment < borderSegments; segment += 1) {
-    const angle = (segment / borderSegments) * Math.PI * 2;
-    const isGate = gateAngles.some((gate) => Math.abs(Math.atan2(Math.sin(angle - gate), Math.cos(angle - gate))) < 0.1);
-    if (isGate) continue;
-    const rail = addMesh(
-      arena,
-      new THREE.BoxGeometry(borderSegmentLength, 0.42, 0.16),
-      borderMaterial,
-      [Math.cos(angle) * borderRadius, 0.24, Math.sin(angle) * borderRadius]
-    );
-    rail.rotation.y = angle + Math.PI / 2;
-  }
-
   const rune = material(theme.glow, 0.25, 0.32, { emissive: theme.glow, emissiveIntensity: 0.55 });
   const markCount = 8 + Math.floor(random() * 9);
   for (let i = 0; i < markCount; i += 1) {
@@ -1294,6 +1276,17 @@ function spawnImpact(target, heavy) {
 
 function createKnockoutBlackHole(fighter) {
   const effect = new THREE.Group();
+  const fighterRadius = Math.hypot(fighter.x, fighter.z);
+  const edgeAnchorRadius = Math.min(Math.max(0, fighterRadius - 1.15), floorRadius - 1.1);
+  const centerX = fighterRadius > 1.15
+    ? (fighter.x / fighterRadius) * edgeAnchorRadius
+    : fighter.x - fighter.facing * 1.15;
+  const centerZ = fighterRadius > 1.15
+    ? (fighter.z / fighterRadius) * edgeAnchorRadius
+    : fighter.z;
+  fighter.blackHoleAnchor = { x: centerX, z: centerZ };
+  fighter.blackHoleStartRadius = Math.hypot(fighter.x - centerX, fighter.z - centerZ);
+  fighter.blackHoleStartAngle = Math.atan2(fighter.z - centerZ, fighter.x - centerX);
   const core = addMesh(
     effect,
     new THREE.SphereGeometry(0.58, 14, 10),
@@ -1322,11 +1315,13 @@ function createKnockoutBlackHole(fighter) {
     const particle = addMesh(effect, new THREE.OctahedronGeometry(0.075, 0), particleMaterial, [Math.cos(angle) * 1.05, 0.08, Math.sin(angle) * 1.05]);
     particles.push({ mesh: particle, angle, speed: index % 2 ? -4.5 : 5.2 });
   }
-  effect.position.set(fighter.x, Math.max(0.12, fighter.y - 0.55), fighter.z);
+  effect.position.set(centerX, 0.12, centerZ);
   effect.userData.core = core;
   effect.userData.outerRing = outerRing;
   effect.userData.innerRing = innerRing;
   effect.userData.particles = particles;
+  effect.userData.centerX = centerX;
+  effect.userData.centerZ = centerZ;
   arena.add(effect);
   return effect;
 }
@@ -1334,7 +1329,7 @@ function createKnockoutBlackHole(fighter) {
 function updateKnockoutBlackHole(fighter, delta, progress) {
   const effect = fighter.knockoutEffect;
   if (!effect) return;
-  effect.position.set(fighter.x, Math.max(0.12, fighter.y - 0.55), fighter.z);
+  effect.position.set(effect.userData.centerX, 0.12, effect.userData.centerZ);
   effect.scale.setScalar(0.75 + progress * 0.75);
   effect.userData.outerRing.rotation.z -= delta * 3.2;
   effect.userData.innerRing.rotation.z += delta * 5.1;
@@ -1353,6 +1348,7 @@ function removeKnockoutBlackHole(fighter) {
 }
 
 function showKnockoutFlash(fighter) {
+  if (fighter !== fighters[0]) return;
   knockoutName.textContent = characters[fighter.kind].name;
   knockoutFlash.hidden = false;
   knockoutFlash.classList.remove("play");
@@ -1573,14 +1569,17 @@ function updateFighter(fighter, index, delta, elapsed) {
     fighter.respawn -= delta;
     if (fighter.falling) {
       fighter.knockoutElapsed += delta;
+      const progress = THREE.MathUtils.clamp(fighter.knockoutElapsed / 1.35, 0, 1);
+      const orbitAngle = fighter.blackHoleStartAngle + progress * Math.PI * 4;
+      const orbitRadius = fighter.blackHoleStartRadius * (1 - progress);
+      fighter.x = fighter.blackHoleAnchor.x + Math.cos(orbitAngle) * orbitRadius;
+      fighter.z = fighter.blackHoleAnchor.z + Math.sin(orbitAngle) * orbitRadius;
       fighter.vy -= 4.5 * delta;
-      fighter.x += fighter.vx * delta * 0.35;
       fighter.y += fighter.vy * delta;
-      fighter.z += fighter.vz * delta * 0.35;
       fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+      fighter.visual.rotation.y += delta * 5;
       fighter.visual.rotation.z += delta * 0.7;
       fighter.visual.rotation.x += delta * 0.35;
-      const progress = THREE.MathUtils.clamp(fighter.knockoutElapsed / 1.35, 0, 1);
       fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(Math.max(0.08, 1 - progress * 0.78));
       updateKnockoutBlackHole(fighter, delta, progress);
     }
