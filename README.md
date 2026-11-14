@@ -22,11 +22,11 @@ npm run preview
 
 ## Controls
 
-In solo mode, use either arrows or WASD for movement. Arrow Up and Space jump; Arrow Down and S/W adjust depth. J or Enter strikes, and K or Shift uses a special. The fighter stops when keys are released; the CPU opponent moves and attacks by design.
+In solo mode, use either arrows or WASD for movement. Arrow Up and Space jump; Arrow Down and S/W adjust depth. J or Enter fights, and K or Shift uses a special. On-screen movement, FIGHT, and SPECIAL buttons stay visible during a match. The fighter stops when keys are released; the CPU opponent moves and attacks by design.
 
 In local mode, `A`/`D` move, `W`/`S` adjust depth, `Space` jumps, and `J`/`K` attack. The arrow keys move, Arrow Up jumps, Arrow Down adjusts depth, and `Enter`/right `Shift` attack. Touch buttons are available for solo play on touch screens.
 
-Use the previous/next or Random controls on the fighter-selection screen to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
+Use **FIGHT NOW** on the title screen to start immediately, or enter fighter selection and press **FIGHT!** to choose a character first. Use the previous/next or Random controls there to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
 
 The renderer is tuned for steadier performance on everyday devices: it caps display resolution and frame rate, skips expensive real-time shadows, and pauses while the tab is hidden. Keyboard state is cleared on focus changes and match transitions to prevent stuck movement.
 

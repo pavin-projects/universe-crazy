@@ -11,7 +11,8 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 canvasRoot.append(renderer.domElement);
 renderer.domElement.setAttribute("role", "img");
-renderer.domElement.setAttribute("aria-label", "Animated 3D portal and fighting arena");
+renderer.domElement.setAttribute("aria-label", "Game scene. Keyboard controls activate after starting a match.");
+renderer.domElement.tabIndex = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#090c1d");
@@ -437,9 +438,11 @@ function updateArenaLabel() {
 }
 
 function updateControlsHint() {
-  document.querySelector("#controls-hint").textContent = battleMode === "cpu"
-    ? "Move: ←/→ or A/D · Jump: ↑ / Space · Depth: ↓ / W/S · Strike: J / Enter · Special: K / Shift"
-    : "Local controls: Arrow keys + Enter/Shift · A/D + Space/J/K · W/S for depth";
+  const controls = battleMode === "cpu"
+    ? "Move: ←/→ or A/D · Jump: ↑ / Space · Depth: ↓ / W/S · Fight: J / Enter · Special: K / Shift"
+    : "Local: A/D + W/S + Space/J/K · Arrows + Enter/Shift";
+  document.querySelector("#controls-hint").textContent = controls;
+  document.querySelector("#match-control-hint").textContent = controls;
 }
 
 function clearInputState() {
@@ -469,11 +472,13 @@ function startMatch() {
   document.querySelector("#select-screen").hidden = true;
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
-  document.querySelector("#touch-controls").hidden = battleMode !== "cpu";
+  document.querySelector("#touch-controls").hidden = false;
   document.querySelector("#player-two-label").textContent = battleMode === "cpu" ? "CPU" : "PLAYER 2";
   document.querySelector("#battle-status").textContent = "FIGHT!";
+  updateControlsHint();
   updateHud();
   document.querySelector("#screen-reader-status").textContent = `Battle started. ${characters[selectedFighter].name} versus ${characters[opponent].name}.`;
+  renderer.domElement.focus();
 }
 
 function showSelection() {
@@ -504,6 +509,7 @@ function finishMatch(winnerIndex, reason) {
   matchEnded = true;
   matchActive = false;
   document.querySelector("#battle-status").textContent = "FINAL";
+  document.querySelector("#touch-controls").hidden = true;
   const winner = winnerIndex === null ? null : fighters[winnerIndex];
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";
   document.querySelector("#winner-message").textContent = winner
@@ -803,6 +809,7 @@ createArena(arenaIndex);
 updateArenaLabel();
 
 document.querySelector("#enter-portal").addEventListener("click", showSelection);
+document.querySelector("#quick-fight").addEventListener("click", startMatch);
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
 document.querySelector("#start-match").addEventListener("click", startMatch);
 document.querySelector("#leave-battle").addEventListener("click", showSelection);

@@ -20,6 +20,7 @@
           <h1 id="game-title">UNIVERSE<br><span>CRAZY</span></h1>
           <p class="intro">Pick a fighter. Step through the portal. Make your own legend.</p>
           <button class="primary-button" id="enter-portal" type="button">Enter the portal <span aria-hidden="true">↗</span></button>
+          <button class="quick-fight-button" id="quick-fight" type="button">FIGHT NOW <span aria-hidden="true">→</span></button>
           <p class="portal-hint">A new world is waiting on the other side.</p>
         </div>
         <div class="portal-footer">
@@ -126,15 +127,18 @@
         </div>
       </section>
 
-      <div class="touch-controls" id="touch-controls" hidden aria-label="Touch controls">
-        <div class="touch-movement">
-          <button type="button" data-key="KeyA" aria-label="Move left">←</button>
-          <button type="button" data-key="KeyD" aria-label="Move right">→</button>
-          <button type="button" data-key="Space" aria-label="Jump">↑</button>
-        </div>
-        <div class="touch-attacks">
-          <button type="button" data-key="KeyJ">Strike</button>
-          <button type="button" data-key="KeyK">Special</button>
+      <div class="touch-controls" id="touch-controls" hidden aria-label="Player controls">
+        <p class="control-guide" id="match-control-hint">Move: ←/→ or A/D · Jump: ↑ / Space · Depth: ↓ / W/S · Strike: J / Enter · Special: K / Shift</p>
+        <div class="control-pad">
+          <div class="touch-movement">
+            <button type="button" data-key="KeyA" aria-label="Move left">←</button>
+            <button type="button" data-key="KeyD" aria-label="Move right">→</button>
+            <button type="button" data-key="Space" aria-label="Jump">↑</button>
+          </div>
+          <div class="touch-attacks">
+            <button class="fight-control" type="button" data-key="KeyJ" aria-label="Fight / strike">FIGHT</button>
+            <button type="button" data-key="KeyK" aria-label="Special attack">SPECIAL</button>
+          </div>
         </div>
       </div>
 

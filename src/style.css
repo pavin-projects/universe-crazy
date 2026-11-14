@@ -35,6 +35,8 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 20px; padding: 0 22px; background: linear-gradient(100deg, #8b70ff, #6e80ff); color: white; box-shadow: 0 8px 26px #7865ff52; }
 .primary-button:hover, .secondary-button:hover { transform: translateY(-2px); }
 .primary-button span { font-size: 1.15rem; }
+.quick-fight-button { min-height: 48px; margin-left: 9px; padding: 0 17px; border: 1px solid #ffd16688; border-radius: 12px; background: #ffd16618; color: #ffe3a0; cursor: pointer; font-weight: 900; letter-spacing: .04em; }
+.quick-fight-button:hover { border-color: var(--gold); background: #ffd1662a; }
 .portal-hint { margin: 13px 0 0; color: #9698b0; font-size: .76rem; }
 .portal-footer { color: #8587a2; font-size: .62rem; }
 .portal-footer i { padding: 0 8px; color: var(--cyan); font-style: normal; }
@@ -116,10 +118,14 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .match-end > p:not(.eyebrow) { color: #c6c4da; font-size: .9rem; }
 .end-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 9px; margin-top: 18px; }
 .end-actions .primary-button, .end-actions .secondary-button { min-height: 42px; }
-.touch-controls { position: absolute; right: 15px; bottom: 14px; left: 15px; display: none; justify-content: space-between; align-items: end; }
+.touch-controls { position: absolute; bottom: 12px; left: 50%; display: flex; flex-direction: column; align-items: center; gap: 7px; width: min(850px, calc(100% - 32px)); transform: translateX(-50%); pointer-events: auto; }
+.control-guide { width: fit-content; max-width: 100%; margin: 0; padding: 6px 11px; border: 1px solid #a798ff55; border-radius: 10px; background: #101329e8; color: #f0edff; font-size: .65rem; font-weight: 700; line-height: 1.4; text-align: center; }
+.control-pad { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; }
 .touch-movement, .touch-attacks { display: flex; align-items: center; gap: 8px; }
-.touch-controls button { min-width: 44px; min-height: 44px; border: 1px solid #b5abff70; border-radius: 14px; background: #171a34cf; color: white; font-size: .9rem; font-weight: 800; touch-action: none; user-select: none; }
-.touch-attacks button { padding: 0 12px; color: #c8faff; font-size: .7rem; }
+.touch-controls button { min-width: 48px; min-height: 48px; border: 1px solid #b5abff99; border-radius: 14px; background: #171a34ee; color: white; cursor: pointer; font-size: .9rem; font-weight: 800; touch-action: none; user-select: none; }
+.touch-controls button:active { transform: scale(.96); background: #36315e; }
+.touch-attacks button { min-width: 92px; padding: 0 12px; color: #c8faff; font-size: .7rem; }
+.touch-attacks .fight-control { border-color: #ffd166; background: linear-gradient(105deg, #a87026, #ca8b27); color: #fff7dd; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 [hidden] { display: none !important; }
 
@@ -142,6 +148,7 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
   .select-actions { align-items: stretch; flex-direction: column; margin-top: 10px; }
   .select-actions p { order: 2; }
   .select-actions .primary-button { width: 100%; }
+  .quick-fight-button { margin: 8px 0 0; }
   .battle-hud { grid-template-columns: 1fr 70px 1fr; gap: 4px; top: 10px; width: calc(100% - 16px); padding: 8px 6px; }
   .hud-player { grid-template-columns: 7px minmax(48px,1fr) auto; gap: 4px; }
   .hud-player > div strong { font-size: .69rem; }
@@ -149,6 +156,12 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
   .damage { font-size: .95rem; }
   .match-clock strong { font-size: 1.1rem; }
   .stocks { font-size: .5rem; }
+  .touch-controls { bottom: 8px; width: calc(100% - 16px); }
+  .control-guide { width: 100%; padding: 5px 7px; font-size: .55rem; }
+  .control-pad { gap: 6px; }
+  .touch-movement, .touch-attacks { gap: 5px; }
+  .touch-controls button { min-width: 42px; min-height: 44px; border-radius: 12px; }
+  .touch-attacks button { min-width: 72px; padding: 0 7px; font-size: .62rem; }
 }
 
 @media (hover: none), (pointer: coarse) {
