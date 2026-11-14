@@ -67,7 +67,7 @@ const frameInterval = 1000 / 45;
 
 const characters = {
   bumble: {
-    name: "Bumble Roy",
+    name: "Bumble Boy",
     palette: { primary: "#f5bd4a", dark: "#282238", trim: "#ffe38a", accent: "#ff9452" },
     speed: 7.3,
     power: 0.9,
