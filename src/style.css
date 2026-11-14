@@ -24,6 +24,12 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .graphics-error-card h2 { margin: 10px 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(1.7rem, 6vw, 2.5rem); }
 .graphics-error-card > p:not(.eyebrow) { margin: 0 0 18px; color: #c6c4da; line-height: 1.6; }
 .game-ui { position: relative; z-index: 1; width: 100%; height: 100vh; min-height: 560px; overflow: hidden; pointer-events: none; }
+.ko-flash { position: absolute; z-index: 12; top: 43%; left: 50%; display: grid; justify-items: center; gap: 2px; min-width: 220px; padding: 10px 24px; border: 1px solid #ffc978aa; border-radius: 18px; background: linear-gradient(110deg, #281426e8, #151328e8); box-shadow: 0 0 42px #ff5a9a77, inset 0 0 22px #ffb45626; color: #fff2d6; opacity: 0; pointer-events: none; text-align: center; transform: translate(-50%, -50%); }
+.ko-flash[hidden] { display: none; }
+.ko-flash.play { animation: knockout-flash 1.15s cubic-bezier(.15,.72,.28,1) both; }
+.ko-flash span { font-family: "Space Grotesk", sans-serif; font-size: clamp(4rem, 12vw, 8rem); font-weight: 700; line-height: .9; letter-spacing: -.08em; text-shadow: 0 0 18px #ff739e, 0 0 44px #ff5b83; }
+.ko-flash small { color: #ffe2ae; font-size: .75rem; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
+@keyframes knockout-flash { 0% { opacity: 0; transform: translate(-50%, -38%) scale(.35) rotate(-8deg); } 16% { opacity: 1; transform: translate(-50%, -50%) scale(1.08) rotate(2deg); } 30% { transform: translate(-50%, -50%) scale(1) rotate(0); } 76% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -56%) scale(.82); } }
 .screen, .battle-hud, .match-end, .touch-controls { pointer-events: auto; }
 .screen { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 28px clamp(22px, 5vw, 76px); background: linear-gradient(90deg, #090c1de8 0%, #090c1dbc 38%, #090c1d19 78%); }
 .portal-screen { align-items: center; justify-content: center; padding: 24px; background: radial-gradient(ellipse at 70% 50%, #090c1d35 0%, #090c1d88 70%), linear-gradient(90deg, #090c1d88, #090c1d22); text-align: center; }

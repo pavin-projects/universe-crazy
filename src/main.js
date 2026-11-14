@@ -4,6 +4,8 @@ function initializeUniverseCrazy() {
 const canvasRoot = document.querySelector("#scene");
 const graphicsError = document.querySelector("#graphics-error");
 const graphicsErrorMessage = document.querySelector("#graphics-error-message");
+const knockoutFlash = document.querySelector("#knockout-flash");
+const knockoutName = document.querySelector("#knockout-name");
 document.querySelector("#retry-graphics").addEventListener("click", () => window.location.reload());
 let renderer;
 try {
@@ -14,7 +16,7 @@ try {
   graphicsError.hidden = false;
   return;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -31,6 +33,9 @@ scene.fog = new THREE.FogExp2("#0c1027", 0.022);
 let starField;
 let galaxyBackdrop;
 let titlePlanets;
+let spaceBattle;
+const backgroundShips = [];
+const backgroundShots = [];
 
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
 camera.position.set(0, 10.8, 25.5);
@@ -63,6 +68,7 @@ const fighters = [];
 const arena = new THREE.Group();
 scene.add(arena);
 const arenaSurfaces = [];
+const arenaPlanets = [];
 let portalDisc;
 let portalRings = [];
 let fighterPreview = null;
@@ -86,9 +92,11 @@ const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide
 let matchTime = 180;
 let matchActive = false;
 let matchEnded = false;
+let portalIntroActive = false;
 let effectTime = 0;
 let displayedSecond = -1;
 let hudDirty = true;
+let knockoutFlashTimer = 0;
 let animationFrame = 0;
 let lastFrameTime = 0;
 const frameInterval = 1000 / 45;
@@ -301,7 +309,11 @@ function createUniverseBackdrop() {
   titlePlanets = new THREE.Group();
   for (const config of [
     { x: -19, y: 7, z: -17, radius: 3.1, color: "#754caa", glow: "#c5a1ff", phase: 0 },
-    { x: 19, y: -2.5, z: -21, radius: 2.45, color: "#287d9c", glow: "#78eaff", phase: 2.4 }
+    { x: 19, y: -2.5, z: -21, radius: 2.45, color: "#287d9c", glow: "#78eaff", phase: 2.4 },
+    { x: -25, y: -3.5, z: -28, radius: 1.55, color: "#8a4c65", glow: "#ff9b9f", phase: 1.1 },
+    { x: 25, y: 10, z: -34, radius: 1.8, color: "#426b55", glow: "#9affc1", phase: 3.5 },
+    { x: -11, y: 12.5, z: -41, radius: 1.05, color: "#a17c43", glow: "#ffe097", phase: 5.2 },
+    { x: 12, y: -8.5, z: -38, radius: 1.25, color: "#515e9b", glow: "#a5baff", phase: 4.3 }
   ]) {
     const planet = new THREE.Group();
     planet.position.set(config.x, config.y, config.z);
@@ -322,6 +334,7 @@ function createUniverseBackdrop() {
       material(config.glow, 0.3, 0.28, { emissive: config.glow, emissiveIntensity: 0.9 })
     );
     ring.rotation.set(1.12, 0.2, -0.16);
+    ring.userData.spin = config.radius > 2 ? 0.07 : -0.1;
     planet.add(ring);
     const moon = new THREE.Mesh(
       new THREE.SphereGeometry(config.radius * 0.16, 12, 10),
@@ -333,6 +346,63 @@ function createUniverseBackdrop() {
     titlePlanets.add(planet);
   }
   scene.add(titlePlanets);
+  createSpaceBattle();
+}
+
+function createSpaceBattle() {
+  spaceBattle = new THREE.Group();
+  scene.add(spaceBattle);
+  const shipConfigs = [
+    { x: -25, y: 8, z: -35, direction: 1, speed: 1.9, color: "#77eaff", phase: 0.2 },
+    { x: -9, y: 12, z: -44, direction: 1, speed: 1.3, color: "#8effd0", phase: 2.4 },
+    { x: 25, y: 4, z: -38, direction: -1, speed: 1.7, color: "#ff81bc", phase: 1.1 },
+    { x: 10, y: 10, z: -47, direction: -1, speed: 1.45, color: "#ffb56e", phase: 4.1 }
+  ];
+  shipConfigs.forEach((config) => {
+    const ship = new THREE.Group();
+    const hullMaterial = new THREE.MeshBasicMaterial({ color: config.color });
+    const wingMaterial = new THREE.MeshBasicMaterial({ color: "#7184b8" });
+    const engineMaterial = new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: 0.8 });
+    const hull = addMesh(ship, new THREE.CylinderGeometry(0.07, 0.25, 1.35, 6), hullMaterial, [0, 0, 0]);
+    hull.rotation.z = -Math.PI / 2;
+    const wings = addMesh(ship, new THREE.BoxGeometry(0.76, 0.07, 0.62), wingMaterial, [-0.12, 0, 0]);
+    wings.rotation.y = 0.16;
+    addMesh(ship, new THREE.SphereGeometry(0.12, 8, 6), engineMaterial, [-0.76, 0, 0]);
+    ship.position.set(config.x, config.y, config.z);
+    ship.rotation.y = config.direction > 0 ? 0 : Math.PI;
+    spaceBattle.add(ship);
+    backgroundShips.push({ ...config, group: ship });
+  });
+
+  for (let index = 0; index < 4; index += 1) {
+    const color = index % 2 ? "#ff8fc9" : "#7df6ff";
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
+    const shot = addMesh(spaceBattle, new THREE.SphereGeometry(0.075, 7, 6), material, [0, 0, 0]);
+    backgroundShots.push({
+      mesh: shot,
+      phase: index * 0.25,
+      speed: index % 2 ? -7.5 : 6.8,
+      lane: index % 2 ? 1 : -1,
+      colorIndex: index
+    });
+  }
+}
+
+function animateSpaceBattle(elapsed) {
+  const flightRange = 56;
+  backgroundShips.forEach((ship) => {
+    const wrappedX = ((ship.x + ship.direction * ship.speed * elapsed + flightRange / 2) % flightRange + flightRange) % flightRange - flightRange / 2;
+    ship.group.position.x = wrappedX;
+    ship.group.position.y = ship.y + Math.sin(elapsed * 0.72 + ship.phase) * 0.36;
+    ship.group.position.z = ship.z + Math.sin(elapsed * 0.48 + ship.phase) * 0.28;
+    ship.group.rotation.z = Math.sin(elapsed * 0.9 + ship.phase) * 0.035;
+    ship.group.children[2].scale.x = 0.75 + Math.sin(elapsed * 9 + ship.phase) * 0.2;
+  });
+  backgroundShots.forEach((shot) => {
+    const distance = ((elapsed * shot.speed + shot.phase * flightRange + flightRange / 2) % flightRange + flightRange) % flightRange - flightRange / 2;
+    shot.mesh.position.set(distance, 7 + shot.lane * 2.4 + Math.sin(elapsed * 1.8 + shot.phase) * 0.3, -39 - shot.colorIndex * 1.4);
+    shot.mesh.visible = Math.sin(elapsed * 4 + shot.phase * Math.PI * 2) > -0.75;
+  });
 }
 
 function createPortal() {
@@ -418,6 +488,53 @@ function createBattlefieldBackdrop(theme, random) {
     boulder.rotation.set(random() * 0.5, random() * Math.PI, random() * 0.4);
   }
 
+  const planetColors = [theme.glow, theme.portal, theme.trim, "#a68cff"];
+  const planetConfigs = [
+    { side: -1.45, height: 10, depth: 11, radius: 4.6 },
+    { side: 1.4, height: 10.5, depth: 13, radius: 5.1 },
+    { side: 0.25, height: 15, depth: 18, radius: 3.6 },
+    { side: -0.55, height: 18, depth: 20, radius: 2.65 }
+  ];
+  planetConfigs.forEach((config, index) => {
+    const phase = random() * Math.PI * 2;
+    const group = new THREE.Group();
+    group.position.set(config.side * floorRadius, config.height, backZ - config.depth);
+    const surface = new THREE.Mesh(
+      new THREE.SphereGeometry(config.radius, 20, 14),
+      material(planetColors[index], 0.8, 0.04, { emissive: planetColors[index], emissiveIntensity: 0.34, fog: false })
+    );
+    const atmosphere = new THREE.Mesh(
+      new THREE.SphereGeometry(config.radius * 1.1, 16, 12),
+      new THREE.MeshBasicMaterial({ color: planetColors[index], transparent: true, opacity: 0.12, depthWrite: false, fog: false, side: THREE.BackSide })
+    );
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(config.radius * 1.35, 0.09, 6, 32),
+      new THREE.MeshBasicMaterial({ color: planetColors[(index + 1) % planetColors.length], transparent: true, opacity: 0.82, fog: false })
+    );
+    ring.rotation.set(1.05 + random() * 0.2, 0.12, -0.16);
+    const moon = new THREE.Mesh(
+      new THREE.SphereGeometry(config.radius * 0.17, 10, 8),
+      new THREE.MeshBasicMaterial({ color: planetColors[(index + 2) % planetColors.length], fog: false })
+    );
+    moon.position.set(config.radius * 1.8, 0.15, 0);
+    group.add(surface, atmosphere, ring, moon);
+    arena.add(group);
+    arenaPlanets.push({
+      group,
+      surface,
+      ring,
+      moon,
+      x: group.position.x,
+      y: group.position.y,
+      phase,
+      spin: index % 2 ? -0.16 : 0.13,
+      orbitAngle: phase,
+      orbitRadius: config.radius * 1.7,
+      orbitSpeed: index % 2 ? -0.38 : 0.3,
+      drift: 0.52 + random() * 0.34
+    });
+  });
+
   const foliage = material(theme.name === "Verdant Canopy" ? "#4c9a58" : "#54745b", 0.88, 0.02);
   const leafGlow = material(theme.name === "Verdant Canopy" ? "#8bd37a" : "#829f70", 0.82, 0.01);
   for (const side of [-1, 1]) {
@@ -442,6 +559,7 @@ function createArena(index = arenaIndex) {
   portalRings = [];
   portalDisc = null;
   secretSeal = null;
+  arenaPlanets.length = 0;
   hitEffects.length = 0;
   cameraShake = 0;
   arenaSurfaces.length = 0;
@@ -458,14 +576,45 @@ function createArena(index = arenaIndex) {
   const stone = material(theme.stone, 0.72, 0.18);
   const floor = material(theme.floor, 0.52, 0.24);
   const trim = material(theme.trim, 0.3, 0.46, { emissive: theme.trim, emissiveIntensity: 0.48 });
-  floorRadius = 9.5 + random() * 1.4;
+  const radiusVariants = [10.4, 12.6, 9.2, 10.8, 13.1, 9.6, 11.6, 8.9, 12, 10.1];
+  const planetDepthVariants = [0.38, 0.56, 0.25, 0.42, 0.62, 0.28, 0.48, 0.24, 0.58, 0.34];
+  floorRadius = radiusVariants[layout % radiusVariants.length] + random() * 0.4;
+  const planetDepth = floorRadius * planetDepthVariants[layout % planetDepthVariants.length];
+  const planetCore = addMesh(
+    arena,
+    new THREE.SphereGeometry(1, 36, 22),
+    stone,
+    [0, -planetDepth, 0],
+    [floorRadius + 0.15, planetDepth, floorRadius + 0.15]
+  );
+  planetCore.rotation.y = random() * Math.PI * 2;
   const platform = addMesh(arena, new THREE.CylinderGeometry(floorRadius + 0.55, floorRadius - 0.35, 0.75, 48), stone, [0, -0.35, 0]);
   platform.receiveShadow = true;
   addMesh(arena, new THREE.CircleGeometry(floorRadius, 48), floor, [0, 0.035, 0]).rotation.x = -Math.PI / 2;
+  const planetBand = addMesh(arena, new THREE.TorusGeometry(floorRadius * 0.88, 0.085, 8, 72), trim, [0, -planetDepth * 0.58, 0]);
+  planetBand.rotation.x = Math.PI / 2;
 
   for (const radius of [4, floorRadius * 0.74, floorRadius - 0.1]) {
     const ring = addMesh(arena, new THREE.TorusGeometry(radius, radius > floorRadius - 0.2 ? 0.075 : 0.025, 8, 72), trim, [0, 0.08, 0]);
     ring.rotation.x = Math.PI / 2;
+  }
+
+  const borderMaterial = material(theme.trim, 0.34, 0.38, { emissive: theme.glow, emissiveIntensity: 0.22 });
+  const gateAngles = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+  const borderRadius = floorRadius - 0.16;
+  const borderSegments = 36;
+  const borderSegmentLength = (Math.PI * 2 * borderRadius / borderSegments) * 0.84;
+  for (let segment = 0; segment < borderSegments; segment += 1) {
+    const angle = (segment / borderSegments) * Math.PI * 2;
+    const isGate = gateAngles.some((gate) => Math.abs(Math.atan2(Math.sin(angle - gate), Math.cos(angle - gate))) < 0.1);
+    if (isGate) continue;
+    const rail = addMesh(
+      arena,
+      new THREE.BoxGeometry(borderSegmentLength, 0.42, 0.16),
+      borderMaterial,
+      [Math.cos(angle) * borderRadius, 0.24, Math.sin(angle) * borderRadius]
+    );
+    rail.rotation.y = angle + Math.PI / 2;
   }
 
   const rune = material(theme.glow, 0.25, 0.32, { emissive: theme.glow, emissiveIntensity: 0.55 });
@@ -499,6 +648,23 @@ function createArena(index = arenaIndex) {
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 2, 0.3, landingDepth * 2), trim, [x, landingTop - 0.15, z]);
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 1.9, 0.04, landingDepth * 1.9), floor, [x, landingTop + 0.02, z]);
     arenaSurfaces.push({ x, z, top: landingTop + 0.04, halfWidth: landingWidth, halfDepth: landingDepth });
+  }
+
+  const platformCount = 2 + (layout % 5);
+  for (let index = 0; index < platformCount; index += 1) {
+    const angle = ((index + 0.5) / platformCount) * Math.PI * 2 + (random() - 0.5) * 0.3;
+    const distance = floorRadius * (0.43 + random() * 0.1);
+    const x = Math.cos(angle) * distance;
+    const z = Math.sin(angle) * distance;
+    const width = 1.2 + random() * 0.8;
+    const depth = 1.2 + random() * 0.8;
+    const top = 0.8 + random() * 1.2;
+    addMesh(arena, new THREE.CylinderGeometry(0.16, 0.24, top, 6), stone, [x, top / 2, z]);
+    addMesh(arena, new THREE.CylinderGeometry(1, 0.92, 0.28, 8), trim, [x, top - 0.14, z], [width, 1, depth]);
+    addMesh(arena, new THREE.CylinderGeometry(0.93, 0.9, 0.05, 8), floor, [x, top - 0.025, z], [width, 1, depth]);
+    const platformRing = addMesh(arena, new THREE.TorusGeometry(width * 0.72, 0.035, 6, 24), rune, [x, top + 0.01, z]);
+    platformRing.rotation.x = Math.PI / 2;
+    arenaSurfaces.push({ x, z, top, halfWidth: width * 0.9, halfDepth: depth * 0.9 });
   }
 
   const crystal = material(theme.trim, 0.38, 0.35);
@@ -841,12 +1007,17 @@ function makeFighter(kind, index) {
 }
 
 function clearFighters() {
+  portalIntroActive = false;
+  knockoutFlashTimer = 0;
+  knockoutFlash.hidden = true;
+  knockoutFlash.classList.remove("play");
   if (fighterPreview) {
     disposeObject(fighterPreview);
     arena.remove(fighterPreview);
     fighterPreview = null;
   }
   for (const fighter of fighters) {
+    removeKnockoutBlackHole(fighter);
     disposeObject(fighter.visual);
     arena.remove(fighter.visual);
   }
@@ -956,6 +1127,19 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     dinosaur: "Raaawr!"
   };
   fighters.forEach((fighter) => createSpeechBubble(fighter, openingLines[fighter.kind]));
+  const portalEntryDuration = 1.05;
+  fighters.forEach((fighter) => {
+    fighter.portalEntry = portalEntryDuration;
+    fighter.portalEntryDuration = portalEntryDuration;
+    fighter.portalEntryTarget = { x: fighter.x, z: fighter.z };
+    fighter.x = 0;
+    fighter.y = 2.85;
+    fighter.z = -5.15;
+    fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+    fighter.visual.rotation.set(0, 0, 0);
+    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.18);
+  });
+  portalIntroActive = true;
   matchTime = 180;
   displayedSecond = -1;
   matchActive = true;
@@ -971,11 +1155,11 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     document.querySelector(`#player-${["one", "two", "three", "four"][index]}-label`).textContent =
       battleMode === "cpu" ? `CPU ${index}` : `PLAYER ${index + 1}`;
   }
-  document.querySelector("#battle-status").textContent = "FIGHT!";
+  document.querySelector("#battle-status").textContent = "PORTAL ARRIVAL!";
   updateControlsHint();
   updateHud();
   document.querySelector("#screen-reader-status").textContent =
-    `Battle started with ${fighters.length} fighters: ${fighters.map((fighter) => `${characters[fighter.kind].name} says ${openingLines[fighter.kind]}`).join(". ")}.`;
+    `The portal opens. ${fighters.map((fighter) => `${characters[fighter.kind].name} enters the arena`).join(". ")}.`;
   renderer.domElement.focus();
 }
 
@@ -1044,6 +1228,7 @@ function showPortal() {
 function finishMatch(winnerIndex, reason) {
   if (matchEnded) return;
   clearInputState();
+  portalIntroActive = false;
   matchEnded = true;
   matchActive = false;
   document.querySelector("#battle-status").textContent = "FINAL";
@@ -1107,6 +1292,76 @@ function spawnImpact(target, heavy) {
   cameraShake = Math.max(cameraShake, heavy ? 0.32 : 0.19);
 }
 
+function createKnockoutBlackHole(fighter) {
+  const effect = new THREE.Group();
+  const core = addMesh(
+    effect,
+    new THREE.SphereGeometry(0.58, 14, 10),
+    new THREE.MeshBasicMaterial({ color: "#02030a" }),
+    [0, 0, 0],
+    [1, 0.25, 1]
+  );
+  const outerRing = addMesh(
+    effect,
+    new THREE.TorusGeometry(0.82, 0.12, 8, 36),
+    new THREE.MeshBasicMaterial({ color: "#ff9d67", transparent: true, opacity: 0.9 }),
+    [0, 0.04, 0]
+  );
+  outerRing.rotation.x = Math.PI / 2;
+  const innerRing = addMesh(
+    effect,
+    new THREE.TorusGeometry(0.58, 0.055, 8, 32),
+    new THREE.MeshBasicMaterial({ color: "#a48aff", transparent: true, opacity: 0.95 }),
+    [0, 0.06, 0]
+  );
+  innerRing.rotation.x = Math.PI / 2;
+  const particleMaterial = new THREE.MeshBasicMaterial({ color: "#8df8ff" });
+  const particles = [];
+  for (let index = 0; index < 6; index += 1) {
+    const angle = (index / 6) * Math.PI * 2;
+    const particle = addMesh(effect, new THREE.OctahedronGeometry(0.075, 0), particleMaterial, [Math.cos(angle) * 1.05, 0.08, Math.sin(angle) * 1.05]);
+    particles.push({ mesh: particle, angle, speed: index % 2 ? -4.5 : 5.2 });
+  }
+  effect.position.set(fighter.x, Math.max(0.12, fighter.y - 0.55), fighter.z);
+  effect.userData.core = core;
+  effect.userData.outerRing = outerRing;
+  effect.userData.innerRing = innerRing;
+  effect.userData.particles = particles;
+  arena.add(effect);
+  return effect;
+}
+
+function updateKnockoutBlackHole(fighter, delta, progress) {
+  const effect = fighter.knockoutEffect;
+  if (!effect) return;
+  effect.position.set(fighter.x, Math.max(0.12, fighter.y - 0.55), fighter.z);
+  effect.scale.setScalar(0.75 + progress * 0.75);
+  effect.userData.outerRing.rotation.z -= delta * 3.2;
+  effect.userData.innerRing.rotation.z += delta * 5.1;
+  effect.userData.particles.forEach((particle) => {
+    particle.angle += delta * particle.speed;
+    particle.mesh.position.set(Math.cos(particle.angle) * 1.05, 0.08 + Math.sin(particle.angle * 2) * 0.08, Math.sin(particle.angle) * 1.05);
+  });
+  effect.userData.core.scale.y = 0.25 + progress * 0.15;
+}
+
+function removeKnockoutBlackHole(fighter) {
+  if (!fighter.knockoutEffect) return;
+  arena.remove(fighter.knockoutEffect);
+  disposeObject(fighter.knockoutEffect);
+  fighter.knockoutEffect = null;
+}
+
+function showKnockoutFlash(fighter) {
+  knockoutName.textContent = characters[fighter.kind].name;
+  knockoutFlash.hidden = false;
+  knockoutFlash.classList.remove("play");
+  void knockoutFlash.offsetWidth;
+  knockoutFlash.classList.add("play");
+  knockoutFlashTimer = 1.2;
+  document.querySelector("#screen-reader-status").textContent = `K.O.! ${characters[fighter.kind].name} is falling into a black hole.`;
+}
+
 function hitTarget(attacker, target, damage, force) {
   if (target.eliminated || target.respawn > 0 || target.invulnerable > 0) return;
   target.damage += damage;
@@ -1114,6 +1369,13 @@ function hitTarget(attacker, target, damage, force) {
   const direction = target.x >= attacker.x ? 1 : -1;
   const knockback = force * characters[attacker.kind].power + target.damage * 0.045;
   target.vx += direction * knockback;
+  const edgeDistance = floorRadius - Math.hypot(target.x, target.z);
+  if (edgeDistance < 3.2) {
+    const edgePush = knockback * (1 - Math.max(0, edgeDistance) / 3.2) * 0.9;
+    const radialLength = Math.hypot(target.x, target.z) || 1;
+    target.vx += (target.x / radialLength) * edgePush;
+    target.vz += (target.z / radialLength) * edgePush;
+  }
   target.vy = Math.max(target.vy, 2.8 + target.damage * 0.022);
   target.vz += Math.sign(target.z - attacker.z || 1) * 1.3;
   target.grounded = false;
@@ -1128,7 +1390,10 @@ function beginKnockout(fighter, reason) {
   if (fighter.eliminated || fighter.respawn > 0) return;
   fighter.falling = true;
   fighter.respawn = 1.35;
+  fighter.knockoutElapsed = 0;
+  fighter.knockoutEffect = createKnockoutBlackHole(fighter);
   fighter.vy = Math.min(fighter.vy, -1.6);
+  showKnockoutFlash(fighter);
   document.querySelector("#battle-status").textContent = `${characters[fighter.kind].name} ${reason}`;
 }
 
@@ -1198,6 +1463,8 @@ function nearestOpponent(fighter) {
 }
 
 function respawn(fighter, index) {
+  removeKnockoutBlackHole(fighter);
+  fighter.visual.scale.copy(fighter.visual.userData.baseScale);
   fighter.stocks -= 1;
   if (fighter.stocks <= 0) {
     fighter.stocks = 0;
@@ -1305,6 +1572,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   if (fighter.respawn > 0) {
     fighter.respawn -= delta;
     if (fighter.falling) {
+      fighter.knockoutElapsed += delta;
       fighter.vy -= 4.5 * delta;
       fighter.x += fighter.vx * delta * 0.35;
       fighter.y += fighter.vy * delta;
@@ -1312,8 +1580,34 @@ function updateFighter(fighter, index, delta, elapsed) {
       fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
       fighter.visual.rotation.z += delta * 0.7;
       fighter.visual.rotation.x += delta * 0.35;
+      const progress = THREE.MathUtils.clamp(fighter.knockoutElapsed / 1.35, 0, 1);
+      fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(Math.max(0.08, 1 - progress * 0.78));
+      updateKnockoutBlackHole(fighter, delta, progress);
     }
     if (fighter.respawn <= 0) respawn(fighter, index);
+    return;
+  }
+
+  if (fighter.portalEntry > 0) {
+    fighter.portalEntry = Math.max(0, fighter.portalEntry - delta);
+    const progress = 1 - fighter.portalEntry / fighter.portalEntryDuration;
+    const eased = 1 - (1 - progress) ** 3;
+    const target = fighter.portalEntryTarget;
+    fighter.x = target.x * eased;
+    fighter.y = THREE.MathUtils.lerp(2.85, 0.08, eased) + Math.sin(progress * Math.PI) * 0.48;
+    fighter.z = THREE.MathUtils.lerp(-5.15, target.z, eased);
+    fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+    fighter.visual.rotation.y = (fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2) + (1 - eased) * Math.PI * 1.7;
+    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.18 + eased * 0.82);
+    if (fighter.portalEntry === 0) {
+      fighter.x = target.x;
+      fighter.y = 0.08;
+      fighter.z = target.z;
+      fighter.grounded = true;
+      fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+      fighter.visual.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+      fighter.visual.scale.copy(fighter.visual.userData.baseScale);
+    }
     return;
   }
 
@@ -1383,9 +1677,12 @@ function updateFighter(fighter, index, delta, elapsed) {
   const body = fighter.visual.userData.body;
   const movement = Math.min(1, Math.hypot(fighter.vx, fighter.vz) / characters[fighter.kind].speed);
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
-  body.position.y = fighter.grounded ? Math.abs(Math.sin(elapsed * 12)) * 0.065 * movement : 0;
+  const idleBreath = Math.sin(elapsed * 2.6 + fighter.cpuThinkTime) * 0.025 * (1 - movement);
+  body.position.y = fighter.grounded ? Math.abs(Math.sin(elapsed * 12)) * 0.065 * movement + idleBreath : 0;
   body.rotation.z = swing * -fighter.facing * 0.22 - fighter.vx * 0.012;
-  body.rotation.x = fighter.grounded ? 0 : -0.1;
+  body.rotation.x = fighter.grounded
+    ? Math.sin(elapsed * 2.1 + fighter.cpuThinkTime) * 0.025 * (1 - movement)
+    : -0.1;
   fighter.visual.userData.animatedLimbs.forEach((limb, limbIndex) => {
     const gaitPhase = (limb.userData.side < 0 ? 0 : Math.PI) + (limb.userData.limbType === "arm" ? Math.PI : 0);
     limb.rotation.z = limb.userData.restRotationZ
@@ -1480,7 +1777,8 @@ function updateCamera(delta) {
   const targetX = THREE.MathUtils.clamp(centerX * 0.42, -4.5, 4.5);
   camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta) + (Math.random() - 0.5) * cameraShake;
   camera.position.y = THREE.MathUtils.damp(camera.position.y, 11.2, 2, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.z = THREE.MathUtils.damp(camera.position.z, 24 + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 1.5, delta);
+  const arenaCameraDistance = Math.max(24, floorRadius * 2.7);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 1.5, delta);
   camera.lookAt(targetX * 0.68, 1.35, 0);
 }
 
@@ -1489,6 +1787,7 @@ function animatePortal(elapsed, delta) {
   galaxyBackdrop.rotation.z += delta * 0.014;
   galaxyBackdrop.rotation.x = -0.18 + Math.sin(elapsed * 0.16) * 0.025;
   galaxyBackdrop.children[0].material.opacity = 0.62 + Math.sin(elapsed * 1.1) * 0.12;
+  animateSpaceBattle(elapsed);
   titlePlanets.visible = titleScreenActive || selectionScreenActive;
   if (titlePlanets.visible) {
     titlePlanets.children.forEach((planet) => {
@@ -1500,6 +1799,16 @@ function animatePortal(elapsed, delta) {
         if (part.userData.spin) part.rotation.y += delta * part.userData.spin;
         if (part.userData.orbitSpeed) part.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta * part.userData.orbitSpeed);
       });
+    });
+  }
+  if (arena.visible) {
+    arenaPlanets.forEach((planet) => {
+      planet.orbitAngle += delta * planet.orbitSpeed;
+      planet.group.position.x = planet.x + Math.sin(planet.orbitAngle) * planet.orbitRadius;
+      planet.group.position.y = planet.y + Math.sin(elapsed * planet.drift + planet.phase) * 0.42;
+      planet.surface.rotation.y += delta * planet.spin;
+      planet.ring.rotation.z += delta * planet.spin * 0.35;
+      planet.moon.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta * planet.orbitSpeed * 1.8);
     });
   }
   portalRings.forEach((item, index) => {
@@ -1543,9 +1852,14 @@ function frame(timestamp = 0) {
   const elapsed = clock.elapsedTime;
   animatePortal(elapsed, delta);
   if (matchActive) {
-    updateClock(delta);
+    if (!portalIntroActive) updateClock(delta);
     for (let index = 0; index < fighters.length; index += 1) {
       updateFighter(fighters[index], index, delta, elapsed);
+    }
+    if (portalIntroActive && fighters.every((fighter) => fighter.portalEntry === 0)) {
+      portalIntroActive = false;
+      document.querySelector("#battle-status").textContent = "FIGHT!";
+      document.querySelector("#screen-reader-status").textContent = "All fighters have entered the arena. Fight!";
     }
     if (secretPortalPending) beginSecretChallenge();
     updateProjectiles(delta);
@@ -1569,6 +1883,13 @@ function frame(timestamp = 0) {
         if (part.userData.spin) part.rotation.y += delta * part.userData.spin;
       });
       animateBlink(fighterPreview, elapsed);
+    }
+  }
+  if (knockoutFlashTimer > 0) {
+    knockoutFlashTimer = Math.max(0, knockoutFlashTimer - delta);
+    if (knockoutFlashTimer === 0) {
+      knockoutFlash.hidden = true;
+      knockoutFlash.classList.remove("play");
     }
   }
   justPressed.clear();
@@ -1700,7 +2021,7 @@ window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
 });
 
 renderer.domElement.addEventListener("webglcontextlost", (event) => {
