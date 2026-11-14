@@ -1,6 +1,6 @@
 # Universe Crazy
 
-An original, browser-based 3D arena fighter. Choose from six procedural fighters, battle in 200 seeded arena layouts across ten visual themes, and play solo versus the CPU or in local two-player mode. Arenas include elevated platforms with working landing physics; fighters have distinct stats, specials, and movement animations.
+An original, browser-based 3D arena fighter. Choose from eight original fighters, including the artistic frog Moss Hopper and dinosaur Rex Rumble, then battle in 200 seeded arena layouts across ten visual themes. Find and strike glowing seals in a few arenas to open the hidden Null Abyss and challenge Entity.exe, the four-stock final boss. Defeating Entity.exe permanently unlocks its fighter skin in this browser.
 
 The character names and geometry here are a starter interpretation. Replace the procedural models and expand the roster/maps when the original art and design details are ready. This project uses its own characters, visuals, UI, and rules; it does not include third-party game assets.
 
@@ -22,9 +22,9 @@ npm run preview
 
 ## Controls
 
-In solo mode, use either arrows or WASD for movement. Arrow Up and Space jump; Arrow Down and S/W adjust depth. J or Enter fights, and K or Shift uses a special. On-screen movement, FIGHT, and SPECIAL buttons stay visible during a match. The fighter stops when keys are released; the CPU opponent moves and attacks by design.
+In solo mode, use either arrows or WASD for movement. Arrow Up and Space jump; Arrow Down and S/W adjust depth. J or Enter fights, and K or Shift uses a special. On touch screens, drag the virtual joystick to move and adjust depth; use the separate JUMP, FIGHT, and SPECIAL buttons. Strike a glowing seal on select maps to open the hidden arena. The fighter stops when keys are released; the CPU opponent moves and attacks by design.
 
-In local mode, `A`/`D` move, `W`/`S` adjust depth, `Space` jumps, and `J`/`K` attack. The arrow keys move, Arrow Up jumps, Arrow Down adjusts depth, and `Enter`/right `Shift` attack. Touch buttons are available for solo play on touch screens.
+In local mode, `A`/`D` move, `W`/`S` adjust depth, `Space` jumps, and `J`/`K` attack. The arrow keys move, Arrow Up jumps, Arrow Down adjusts depth, and `Enter`/right `Shift` attack. The touch joystick controls player one's movement; the on-screen buttons jump and attack.
 
 Use **FIGHT NOW** on the title screen to start immediately, or enter fighter selection and press **FIGHT!** to choose a character first. Use the previous/next or Random controls there to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
 

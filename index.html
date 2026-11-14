@@ -21,11 +21,11 @@
           <p class="intro">Pick a fighter. Step through the portal. Make your own legend.</p>
           <button class="primary-button" id="enter-portal" type="button">Enter the portal <span aria-hidden="true">↗</span></button>
           <button class="quick-fight-button" id="quick-fight" type="button">FIGHT NOW <span aria-hidden="true">→</span></button>
-          <p class="portal-hint">A new world is waiting on the other side.</p>
+          <p class="portal-hint">A new world is waiting on the other side. Some arenas hide secrets.</p>
         </div>
         <div class="portal-footer">
           <span>EARLY ACCESS PROTOTYPE</span>
-          <span>200 ARENAS <i aria-hidden="true">•</i> 06 FIGHTERS</span>
+          <span>200 ARENAS <i aria-hidden="true">•</i> <span id="fighter-count">08 FIGHTERS</span></span>
         </div>
       </section>
 
@@ -33,7 +33,7 @@
         <div class="screen-topline">
           <button class="text-button" id="back-to-portal" type="button">← Portal</button>
           <span class="eyebrow">FIGHTER SELECT</span>
-          <span class="build-label">BUILD 0.2</span>
+          <span class="build-label">BUILD 0.3</span>
         </div>
         <div class="select-heading">
           <p class="eyebrow">CHOOSE YOUR CHAMPION</p>
@@ -73,6 +73,21 @@
           <button class="fighter-card" type="button" data-fighter="tide" aria-pressed="false">
             <span class="fighter-art tide-art" aria-hidden="true"><i></i></span>
             <span class="fighter-card-copy"><span class="fighter-type">THE CURRENT CHASER</span><strong>Tide Runner</strong><small>Fast • Fluid • Focused</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="frog" aria-pressed="false">
+            <span class="fighter-art frog-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE POND HOPPER</span><strong>Moss Hopper</strong><small>Bouncy • Clever • Bright</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="dinosaur" aria-pressed="false">
+            <span class="fighter-art dinosaur-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE ANCIENT RUMBLER</span><strong>Rex Rumble</strong><small>Sturdy • Mighty • Fearless</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card entity-card" type="button" data-fighter="entity" aria-pressed="false" hidden>
+            <span class="fighter-art entity-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">SECRET SKIN UNLOCKED</span><strong>Entity.exe</strong><small>The Null Abyss • Final boss</small></span>
             <span class="pick-indicator" aria-hidden="true">✓</span>
           </button>
         </div>
@@ -131,9 +146,14 @@
         <p class="control-guide" id="match-control-hint">Move: ←/→ or A/D · Jump: ↑ / Space · Depth: ↓ / W/S · Strike: J / Enter · Special: K / Shift</p>
         <div class="control-pad">
           <div class="touch-movement">
-            <button type="button" data-key="KeyA" aria-label="Move left">←</button>
-            <button type="button" data-key="KeyD" aria-label="Move right">→</button>
-            <button type="button" data-key="Space" aria-label="Jump">↑</button>
+            <div class="virtual-joystick" id="virtual-joystick" role="group" aria-label="Drag the joystick to move in any direction">
+              <span class="joystick-direction joystick-up" aria-hidden="true">▲</span>
+              <span class="joystick-direction joystick-down" aria-hidden="true">▼</span>
+              <span class="joystick-direction joystick-left" aria-hidden="true">◀</span>
+              <span class="joystick-direction joystick-right" aria-hidden="true">▶</span>
+              <span class="joystick-knob" id="joystick-knob" aria-hidden="true"></span>
+            </div>
+            <button class="jump-control" type="button" data-key="Space" aria-label="Jump">JUMP</button>
           </div>
           <div class="touch-attacks">
             <button class="fight-control" type="button" data-key="KeyJ" aria-label="Fight / strike">FIGHT</button>

@@ -42,7 +42,9 @@ scene.add(cyanLight);
 const clock = new THREE.Clock();
 const keys = new Set();
 const justPressed = new Set();
+const virtualKeys = new Set();
 const projectiles = [];
+const hitEffects = [];
 const fighters = [];
 const arena = new THREE.Group();
 scene.add(arena);
@@ -54,6 +56,14 @@ let selectedFighter = "bumble";
 let arenaIndex = 0;
 const arenaCount = 200;
 let floorRadius = 8.15;
+let secretSeal = null;
+let secretPortalPending = false;
+let hiddenRealmActive = false;
+let secretChallengeActive = false;
+let savedArenaIndex = 0;
+let savedBattleMode = "cpu";
+let entityUnlocked = localStorage.getItem("universeCrazyEntitySkin") === "unlocked";
+const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur"];
 let matchTime = 180;
 let matchActive = false;
 let matchEnded = false;
@@ -64,6 +74,8 @@ let hudDirty = true;
 let animationFrame = 0;
 let lastFrameTime = 0;
 const frameInterval = 1000 / 45;
+let joystickPointerId = null;
+let cameraShake = 0;
 
 const characters = {
   bumble: {
@@ -108,6 +120,29 @@ const characters = {
     speed: 7.6,
     power: 0.86,
     special: "dash"
+  },
+  frog: {
+    name: "Moss Hopper",
+    palette: { primary: "#63d274", dark: "#204d3b", trim: "#d8ff96", accent: "#88f0b0" },
+    speed: 7.4,
+    power: 0.92,
+    special: "sting"
+  },
+  dinosaur: {
+    name: "Rex Rumble",
+    palette: { primary: "#f0784d", dark: "#57313f", trim: "#ffd166", accent: "#ff9d59" },
+    speed: 5.6,
+    power: 1.22,
+    build: "heavy",
+    special: "quake"
+  },
+  entity: {
+    name: "Entity.exe",
+    palette: { primary: "#71284e", dark: "#160c25", trim: "#ff4f8d", accent: "#b774ff" },
+    speed: 5.5,
+    power: 1.55,
+    build: "heavy",
+    special: "pulse"
   }
 };
 
@@ -123,6 +158,11 @@ const arenaThemes = [
   { name: "Crystal Wilds", background: "#101126", fog: "#24234a", stone: "#4a4778", floor: "#292850", trim: "#8274bb", glow: "#bd9bff", portal: "#ec8bff" },
   { name: "Thunderhead Peak", background: "#121827", fog: "#263248", stone: "#505b70", floor: "#2b354c", trim: "#6d83a4", glow: "#d7f0ff", portal: "#81a4ff" }
 ];
+
+const secretTheme = {
+  name: "The Null Abyss", background: "#08050f", fog: "#16081f", stone: "#30223d",
+  floor: "#1d142b", trim: "#873f83", glow: "#ff4f8d", portal: "#bd48ff"
+};
 
 function material(color, roughness = 0.55, metalness = 0.05, extra = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
@@ -209,15 +249,37 @@ function createPortal() {
   }
 }
 
+function hasSecretSeal(index) {
+  return [5, 13, 18].includes(index % 20);
+}
+
+function createSecretSeal(theme) {
+  const seal = new THREE.Group();
+  seal.position.set(-1.6, 0.08, 0.8);
+  const glow = material(theme.glow, 0.22, 0.35, { emissive: theme.glow, emissiveIntensity: 1.7 });
+  const base = addMesh(seal, new THREE.CylinderGeometry(0.72, 0.86, 0.18, 8), material(theme.stone, 0.38, 0.45), [0, 0.09, 0]);
+  base.rotation.y = Math.PI / 8;
+  const ring = addMesh(seal, new THREE.TorusGeometry(0.53, 0.045, 8, 24), glow, [0, 0.29, 0]);
+  ring.rotation.x = Math.PI / 2;
+  const core = addMesh(seal, new THREE.OctahedronGeometry(0.36, 0), glow, [0, 0.66, 0]);
+  core.userData.spin = 1.8;
+  seal.userData.core = core;
+  arena.add(seal);
+  secretSeal = seal;
+}
+
 function createArena(index = arenaIndex) {
   disposeObject(arena);
   arena.clear();
   portalRings = [];
   portalDisc = null;
+  secretSeal = null;
+  hitEffects.length = 0;
+  cameraShake = 0;
   arenaSurfaces.length = 0;
 
-  const theme = arenaThemes[Math.floor(index / 20) % arenaThemes.length];
-  const layout = index % 20;
+  const theme = hiddenRealmActive ? secretTheme : arenaThemes[Math.floor(index / 20) % arenaThemes.length];
+  const layout = hiddenRealmActive ? 0 : index % 20;
   const random = seededRandom(index + 941);
   scene.background.set(theme.background);
   scene.fog.color.set(theme.fog);
@@ -283,6 +345,13 @@ function createArena(index = arenaIndex) {
   }
 
   createPortal();
+  if (hiddenRealmActive) {
+    const obelisk = addMesh(arena, new THREE.OctahedronGeometry(2.2, 1), material(secretTheme.trim, 0.2, 0.5, { emissive: secretTheme.glow, emissiveIntensity: 1.2 }), [0, 2.2, -4]);
+    obelisk.scale.set(0.8, 1.6, 0.5);
+    obelisk.rotation.y = Math.PI / 4;
+  } else if (hasSecretSeal(index)) {
+    createSecretSeal(theme);
+  }
 }
 
 function createLimb(parent, palette, x, y, z, length, radius, rotationZ = 0) {
@@ -343,8 +412,40 @@ function createFighterVisual(kind) {
       addMesh(body, new THREE.SphereGeometry(0.22, 12, 10), mainMat, [side * 0.58, 0.77, 0.08]);
     }
     addMesh(body, new THREE.BoxGeometry(0.22, 0.22, 0.12), trimMat, [0, 1.18, 0.34]);
+  } else if (kind === "frog") {
+    addMesh(body, new THREE.CapsuleGeometry(0.48, 0.5, 5, 12), mainMat, [0, 0.92, 0], [1.12, 0.9, 1]);
+    addMesh(body, new THREE.SphereGeometry(0.53, 18, 14), mainMat, [0, 1.72, 0.04], [1.16, 0.86, 0.92]);
+    addMesh(body, new THREE.SphereGeometry(0.34, 16, 12), trimMat, [0, 0.96, 0.36], [1.05, 0.84, 0.25]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.CylinderGeometry(0.07, 0.09, 0.36, 9), mainMat, [side * 0.3, 2.13, 0.02], [1, 1, 1]).rotation.z = side * -0.18;
+      addMesh(body, new THREE.SphereGeometry(0.19, 14, 12), trimMat, [side * 0.32, 2.34, 0.12], [1, 1.08, 0.92]);
+      addMesh(body, new THREE.SphereGeometry(0.105, 12, 10), darkMat, [side * 0.32, 2.34, 0.29]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.58, 1.08, 0, 0.35, 0.15, side * -0.18));
+      animatedLimbs.push(createLimb(body, palette, side * 0.29, 0.43, 0, 0.33, 0.19, side * 0.06));
+      addMesh(body, new THREE.SphereGeometry(0.25, 12, 9), trimMat, [side * 0.34, 0.12, 0.14], [1.35, 0.55, 1.35]);
+      addMesh(body, new THREE.SphereGeometry(0.055, 8, 8), trimMat, [side * 0.39, 1.28, 0.38]);
+    }
+    addMesh(body, new THREE.BoxGeometry(0.34, 0.035, 0.025), darkMat, [0, 1.55, 0.48]);
+  } else if (kind === "dinosaur") {
+    addMesh(body, new THREE.CapsuleGeometry(0.58, 0.72, 5, 12), mainMat, [0, 1.05, 0], [1.18, 1.05, 1.15]);
+    addMesh(body, new THREE.SphereGeometry(0.49, 16, 13), mainMat, [0, 1.9, 0.14], [1, 0.91, 1.02]);
+    addMesh(body, new THREE.SphereGeometry(0.37, 14, 10), trimMat, [0, 1.62, 0.51], [1.15, 0.55, 0.86]);
+    addMesh(body, new THREE.BoxGeometry(0.34, 0.06, 0.16), darkMat, [0, 1.52, 0.81]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.SphereGeometry(0.09, 10, 8), trimMat, [side * 0.23, 1.99, 0.48]);
+      addMesh(body, new THREE.SphereGeometry(0.04, 8, 8), darkMat, [side * 0.23, 1.99, 0.53]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.61, 1.17, 0.02, 0.42, 0.18, side * -0.18));
+      animatedLimbs.push(createLimb(body, palette, side * 0.29, 0.43, 0.02, 0.4, 0.2, side * 0.04));
+      addMesh(body, new THREE.SphereGeometry(0.24, 12, 9), darkMat, [side * 0.31, 0.13, 0.18], [1.4, 0.58, 1.45]);
+    }
+    const tail = addMesh(body, new THREE.ConeGeometry(0.34, 1.12, 8), mainMat, [0, 1, -0.95]);
+    tail.rotation.x = -Math.PI / 2;
+    for (const z of [-0.48, -0.08, 0.32]) {
+      const spike = addMesh(body, new THREE.ConeGeometry(0.17, 0.4, 5), trimMat, [0, 1.92, z]);
+      spike.rotation.z = Math.PI;
+    }
   } else {
-    const heavy = characters[kind].build === "heavy";
+    const heavy = characters[kind].build === "heavy" || kind === "entity";
     const width = heavy ? 0.58 : 0.42;
     addMesh(body, new THREE.CapsuleGeometry(width, heavy ? 0.72 : 0.64, 5, 10), mainMat, [0, 1.08, 0]);
     addMesh(body, new THREE.SphereGeometry(heavy ? 0.48 : 0.39, 16, 12), mainMat, [0, 1.92, 0.02]);
@@ -378,8 +479,23 @@ function createFighterVisual(kind) {
         const fin = addMesh(body, new THREE.ConeGeometry(0.22, 0.68, 5), trimMat, [side * 0.49, 1.36, -0.18]);
         fin.rotation.z = side * Math.PI / 2;
       }
+    } else if (kind === "entity") {
+      for (const side of [-1, 1]) {
+        const horn = addMesh(body, new THREE.ConeGeometry(0.2, 0.66, 6), trimMat, [side * 0.34, 2.32, -0.05]);
+        horn.rotation.z = side * -0.42;
+      }
+      addMesh(body, new THREE.BoxGeometry(0.52, 0.11, 0.12), darkMat, [0, 1.89, 0.43]);
+      for (const side of [-1, 1]) {
+        addMesh(body, new THREE.SphereGeometry(0.075, 10, 8), trimMat, [side * 0.15, 1.9, 0.51]);
+      }
+      const halo = addMesh(body, new THREE.TorusGeometry(0.76, 0.055, 8, 32), trimMat, [0, 2.48, 0]);
+      halo.rotation.x = Math.PI / 2;
+      halo.userData.spin = 0.7;
     }
   }
+
+  if (kind === "entity") root.scale.setScalar(1.55);
+  root.userData.baseScale = root.scale.clone();
 
   root.traverse((child) => {
     if (child.isMesh) child.castShadow = true;
@@ -392,14 +508,15 @@ function createFighterVisual(kind) {
 
 function makeFighter(kind, index) {
   const visual = createFighterVisual(kind);
+  if (kind === "dinosaur") visual.scale.setScalar(1.12);
   const x = index === 0 ? -3.4 : 3.4;
   visual.position.set(x, 0.08, index === 0 ? 1.1 : -0.6);
   arena.add(visual);
   return {
     kind, visual, x, y: 0.08, z: index === 0 ? 1.1 : -0.6,
     vx: 0, vy: 0, vz: 0, facing: index === 0 ? 1 : -1,
-    damage: 0, stocks: 3, grounded: true, cooldown: 0, specialCooldown: 0,
-    invulnerable: 0, attackPose: 0, respawn: 0
+    damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
+    invulnerable: 0, attackPose: 0, hitFlash: 0, respawn: 0
   };
 }
 
@@ -414,26 +531,34 @@ function clearFighters() {
     arena.remove(projectile.mesh);
   }
   projectiles.length = 0;
+  for (const effect of hitEffects) {
+    arena.remove(effect);
+    disposeObject(effect);
+  }
+  hitEffects.length = 0;
+  cameraShake = 0;
 }
 
 function updateHud() {
   if (fighters.length < 2) return;
   const [one, two] = fighters;
+  const oneMaxStocks = one.kind === "entity" ? 4 : 3;
+  const twoMaxStocks = two.kind === "entity" ? 4 : 3;
   document.querySelector("#player-one-name").textContent = characters[one.kind].name;
   document.querySelector("#player-two-name").textContent = characters[two.kind].name;
   document.querySelector("#player-one-damage").textContent = `${Math.floor(one.damage)}%`;
   document.querySelector("#player-two-damage").textContent = `${Math.floor(two.damage)}%`;
-  document.querySelector("#player-one-stocks").textContent = `${"● ".repeat(one.stocks)}${"○ ".repeat(3 - one.stocks)}`.trim();
-  document.querySelector("#player-two-stocks").textContent = `${"● ".repeat(two.stocks)}${"○ ".repeat(3 - two.stocks)}`.trim();
+  document.querySelector("#player-one-stocks").textContent = `${"● ".repeat(one.stocks)}${"○ ".repeat(oneMaxStocks - one.stocks)}`.trim();
+  document.querySelector("#player-two-stocks").textContent = `${"● ".repeat(two.stocks)}${"○ ".repeat(twoMaxStocks - two.stocks)}`.trim();
   document.querySelector("#player-one-stocks").setAttribute("aria-label", `${one.stocks} stocks remaining`);
   document.querySelector("#player-two-stocks").setAttribute("aria-label", `${two.stocks} stocks remaining`);
   hudDirty = false;
 }
 
 function updateArenaLabel() {
-  const theme = arenaThemes[Math.floor(arenaIndex / 20) % arenaThemes.length];
-  document.querySelector("#arena-name").textContent = `${theme.name} · Layout ${(arenaIndex % 10) + 1}`;
-  document.querySelector("#arena-count").textContent = `${arenaIndex + 1} / ${arenaCount}`;
+  const theme = hiddenRealmActive ? secretTheme : arenaThemes[Math.floor(arenaIndex / 20) % arenaThemes.length];
+  document.querySelector("#arena-name").textContent = hiddenRealmActive ? theme.name : `${theme.name} · Layout ${(arenaIndex % 10) + 1}`;
+  document.querySelector("#arena-count").textContent = hiddenRealmActive ? "HIDDEN REALM" : `${arenaIndex + 1} / ${arenaCount}`;
   document.querySelector("#battle-arena-name").textContent = theme.name.toUpperCase();
 }
 
@@ -448,6 +573,14 @@ function updateControlsHint() {
 function clearInputState() {
   keys.clear();
   justPressed.clear();
+  resetJoystick();
+}
+
+function resetJoystick() {
+  joystickPointerId = null;
+  virtualKeys.clear();
+  const knob = document.querySelector("#joystick-knob");
+  if (knob) knob.style.transform = "";
 }
 
 function changeArena(offset) {
@@ -456,11 +589,11 @@ function changeArena(offset) {
   updateArenaLabel();
 }
 
-function startMatch() {
+function startMatch(opponentOverride = null) {
   clearInputState();
   clearFighters();
-  const characterIds = Object.keys(characters);
-  const opponent = characterIds[(characterIds.indexOf(selectedFighter) + 1) % characterIds.length];
+  const selectedIndex = regularCharacterIds.indexOf(selectedFighter);
+  const opponent = opponentOverride || regularCharacterIds[(Math.max(0, selectedIndex) + 1) % regularCharacterIds.length];
   fighters.push(makeFighter(selectedFighter, 0), makeFighter(opponent, 1));
   matchTime = 180;
   displayedSecond = -1;
@@ -481,8 +614,35 @@ function startMatch() {
   renderer.domElement.focus();
 }
 
+function beginSecretChallenge() {
+  secretPortalPending = false;
+  savedArenaIndex = arenaIndex;
+  savedBattleMode = battleMode;
+  hiddenRealmActive = true;
+  secretChallengeActive = true;
+  arenaIndex = arenaCount;
+  battleMode = "cpu";
+  createArena(arenaIndex);
+  updateArenaLabel();
+  startMatch("entity");
+  document.querySelector("#battle-status").textContent = "ENTITY.EXE — FINAL BOSS";
+  document.querySelector("#screen-reader-status").textContent = "The Entity.exe final boss challenge begins in the hidden realm.";
+}
+
+function restoreFromSecretRealm() {
+  if (!hiddenRealmActive) return;
+  hiddenRealmActive = false;
+  secretChallengeActive = false;
+  secretPortalPending = false;
+  arenaIndex = savedArenaIndex;
+  battleMode = savedBattleMode;
+  createArena(arenaIndex);
+  updateArenaLabel();
+}
+
 function showSelection() {
   clearInputState();
+  restoreFromSecretRealm();
   matchActive = false;
   document.querySelector("#battle-hud").hidden = true;
   document.querySelector("#match-end").hidden = true;
@@ -494,6 +654,7 @@ function showSelection() {
 
 function showPortal() {
   clearInputState();
+  restoreFromSecretRealm();
   matchActive = false;
   document.querySelector("#select-screen").hidden = true;
   document.querySelector("#battle-hud").hidden = true;
@@ -511,9 +672,17 @@ function finishMatch(winnerIndex, reason) {
   document.querySelector("#battle-status").textContent = "FINAL";
   document.querySelector("#touch-controls").hidden = true;
   const winner = winnerIndex === null ? null : fighters[winnerIndex];
+  let unlockMessage = "";
+  if (secretChallengeActive && winner === fighters[0] && !entityUnlocked) {
+    entityUnlocked = true;
+    localStorage.setItem("universeCrazyEntitySkin", "unlocked");
+    document.querySelector('[data-fighter="entity"]').hidden = false;
+    document.querySelector("#fighter-count").textContent = "09 FIGHTERS";
+    unlockMessage = " Entity.exe skin unlocked!";
+  }
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";
   document.querySelector("#winner-message").textContent = winner
-    ? `${characters[winner.kind].name} takes the arena. ${reason}`
+    ? `${characters[winner.kind].name} takes the arena. ${reason}${unlockMessage}`
     : reason;
   document.querySelector("#match-end").hidden = false;
   document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
@@ -529,17 +698,47 @@ function launchProjectile(fighter) {
   projectiles.push({ mesh: projectile, owner: fighter, vx: fighter.facing * 13, life: 1.5, damage: 9, power: characters[fighter.kind].power });
 }
 
+function spawnImpact(target, heavy) {
+  const effect = new THREE.Group();
+  effect.position.set(target.x, target.y + 1.25, target.z);
+  const color = heavy ? "#ffcf74" : "#8df8ff";
+  const ring = addMesh(effect, new THREE.TorusGeometry(0.28, 0.045, 6, 18), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 }), [0, 0, 0]);
+  ring.userData.impactRing = true;
+  for (let i = 0; i < 6; i += 1) {
+    const angle = (i / 6) * Math.PI * 2;
+    const spark = addMesh(effect, new THREE.OctahedronGeometry(0.075, 0), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 }), [0, 0, 0]);
+    spark.userData.velocity = new THREE.Vector3(Math.cos(angle) * 3, 1.5 + (i % 3) * 0.6, Math.sin(angle) * 2.2);
+  }
+  arena.add(effect);
+  effect.userData.remaining = 0.3;
+  hitEffects.push(effect);
+  cameraShake = Math.max(cameraShake, heavy ? 0.32 : 0.19);
+}
+
 function hitTarget(attacker, target, damage, force) {
   if (target.invulnerable > 0) return;
   target.damage += damage;
   const direction = target.x >= attacker.x ? 1 : -1;
-  const knockback = force + target.damage * 0.045;
+  const knockback = force * characters[attacker.kind].power + target.damage * 0.045;
   target.vx += direction * knockback;
   target.vy = Math.max(target.vy, 2.8 + target.damage * 0.022);
   target.vz += Math.sign(target.z - attacker.z || 1) * 1.3;
   target.grounded = false;
+  target.hitFlash = 0.24;
+  spawnImpact(target, damage >= 10);
   hudDirty = true;
   document.querySelector("#battle-status").textContent = `${characters[attacker.kind].name} landed a hit!`;
+}
+
+function tryActivateSecretSeal(fighter) {
+  if (!secretSeal || fighter !== fighters[0] || hiddenRealmActive || secretPortalPending) return;
+  const dx = secretSeal.position.x - fighter.x;
+  const dz = secretSeal.position.z - fighter.z;
+  if (Math.hypot(dx, dz) > 2.45 || dx * fighter.facing < -0.5) return;
+  secretSeal.visible = false;
+  secretPortalPending = true;
+  document.querySelector("#battle-status").textContent = "The seal breaks open. A hidden portal appears!";
+  document.querySelector("#screen-reader-status").textContent = "The seal breaks open. A hidden portal appears!";
 }
 
 function attack(fighter, target, special = false) {
@@ -565,6 +764,7 @@ function attack(fighter, target, special = false) {
   if (inReach && Math.abs(dz) < 1.75 && inFront) {
     hitTarget(fighter, target, (special ? 12 : 7) * characters[fighter.kind].power, special ? 5 : 3.2);
   }
+  if (!special) tryActivateSecretSeal(fighter);
 }
 
 function respawn(fighter, index) {
@@ -590,7 +790,7 @@ function respawn(fighter, index) {
 
 function readInput(fighter, index, delta) {
   const isCpu = index === 1 && battleMode === "cpu";
-  const pressed = (...codes) => codes.some((code) => keys.has(code));
+  const pressed = (...codes) => codes.some((code) => keys.has(code) || virtualKeys.has(code));
   const tapped = (...codes) => codes.some((code) => justPressed.has(code));
   let horizontal = 0;
   let depth = 0;
@@ -602,14 +802,14 @@ function readInput(fighter, index, delta) {
     if (index === 0) {
       const arrowAliases = battleMode === "cpu";
       horizontal = Number(pressed("KeyD", ...(arrowAliases ? ["ArrowRight"] : []))) - Number(pressed("KeyA", ...(arrowAliases ? ["ArrowLeft"] : [])));
-      depth = Number(pressed("KeyS", ...(arrowAliases ? ["ArrowDown"] : []))) - Number(keys.has("KeyW"));
+      depth = Number(pressed("KeyS", ...(arrowAliases ? ["ArrowDown"] : []))) - Number(pressed("KeyW"));
       jump = pressed("Space", ...(arrowAliases ? ["ArrowUp"] : [])) && tapped("Space", ...(arrowAliases ? ["ArrowUp"] : []));
       strike = tapped("KeyJ", ...(arrowAliases ? ["Enter"] : []));
       special = tapped("KeyK", ...(arrowAliases ? ["ShiftRight"] : []));
     } else {
-      horizontal = Number(keys.has("ArrowRight")) - Number(keys.has("ArrowLeft"));
-      depth = Number(keys.has("ArrowDown"));
-      jump = keys.has("ArrowUp") && justPressed.has("ArrowUp");
+      horizontal = Number(pressed("ArrowRight")) - Number(pressed("ArrowLeft"));
+      depth = Number(pressed("ArrowDown"));
+      jump = pressed("ArrowUp") && justPressed.has("ArrowUp");
       strike = justPressed.has("Enter");
       special = justPressed.has("ShiftRight");
     }
@@ -650,6 +850,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.specialCooldown = Math.max(0, fighter.specialCooldown - delta);
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
+  fighter.hitFlash = Math.max(0, fighter.hitFlash - delta);
   if (fighter.respawn > 0) {
     fighter.respawn -= delta;
     if (fighter.respawn <= 0) respawn(fighter, index);
@@ -693,6 +894,7 @@ function updateFighter(fighter, index, delta, elapsed) {
 
   fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
   fighter.visual.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+  fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(1 + fighter.hitFlash * 0.7);
   const body = fighter.visual.userData.body;
   const movement = Math.min(1, Math.hypot(fighter.vx, fighter.vz) / characters[fighter.kind].speed);
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
@@ -728,6 +930,30 @@ function updateProjectiles(delta) {
   }
 }
 
+function updateHitEffects(delta) {
+  for (let i = hitEffects.length - 1; i >= 0; i -= 1) {
+    const effect = hitEffects[i];
+    effect.userData.remaining -= delta;
+    const progress = 1 - effect.userData.remaining / 0.3;
+    effect.children.forEach((child) => {
+      if (child.userData.impactRing) {
+        child.scale.setScalar(1 + progress * 2.2);
+        child.material.opacity = Math.max(0, 1 - progress);
+      } else if (child.userData.velocity) {
+        child.position.addScaledVector(child.userData.velocity, delta);
+        child.userData.velocity.y -= 9 * delta;
+        child.material.opacity = Math.max(0, 1 - progress);
+      }
+    });
+    if (effect.userData.remaining <= 0) {
+      arena.remove(effect);
+      disposeObject(effect);
+      hitEffects.splice(i, 1);
+    }
+  }
+  cameraShake = Math.max(0, cameraShake - delta * 1.2);
+}
+
 function updateClock(delta) {
   matchTime = Math.max(0, matchTime - delta);
   const wholeSeconds = Math.ceil(matchTime);
@@ -750,7 +976,8 @@ function updateClock(delta) {
 function updateCamera(delta) {
   const centerX = fighters.length === 2 ? (fighters[0].x + fighters[1].x) / 2 : 0;
   const targetX = THREE.MathUtils.clamp(centerX * 0.42, -4.5, 4.5);
-  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta);
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta) + (Math.random() - 0.5) * cameraShake;
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, 10.5, 2, delta) + (Math.random() - 0.5) * cameraShake;
   camera.lookAt(targetX * 0.68, 1.35, 0);
 }
 
@@ -769,6 +996,10 @@ function animatePortal(elapsed, delta) {
   });
   if (portalDisc) {
     portalDisc.material.opacity = 0.62 + Math.sin(elapsed * 1.8) * 0.1;
+  }
+  if (secretSeal?.userData.core) {
+    secretSeal.userData.core.rotation.y += delta * secretSeal.userData.core.userData.spin;
+    secretSeal.userData.core.position.y = 0.66 + Math.sin(elapsed * 2.4) * 0.09;
   }
   portalLight.intensity = 16 + Math.sin(elapsed * 2.4) * 3;
   cyanLight.intensity = 6 + Math.sin(elapsed * 1.6 + 1) * 2;
@@ -792,7 +1023,9 @@ function frame(timestamp = 0) {
     for (let index = 0; index < fighters.length; index += 1) {
       updateFighter(fighters[index], index, delta, elapsed);
     }
+    if (secretPortalPending) beginSecretChallenge();
     updateProjectiles(delta);
+    updateHitEffects(delta);
     updateCamera(delta);
     if (hudDirty) updateHud();
   } else if (fighters.length === 0) {
@@ -807,13 +1040,15 @@ function frame(timestamp = 0) {
 createStars();
 createArena(arenaIndex);
 updateArenaLabel();
+document.querySelector('[data-fighter="entity"]').hidden = !entityUnlocked;
+document.querySelector("#fighter-count").textContent = entityUnlocked ? "09 FIGHTERS" : "08 FIGHTERS";
 
 document.querySelector("#enter-portal").addEventListener("click", showSelection);
-document.querySelector("#quick-fight").addEventListener("click", startMatch);
+document.querySelector("#quick-fight").addEventListener("click", () => startMatch());
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
-document.querySelector("#start-match").addEventListener("click", startMatch);
+document.querySelector("#start-match").addEventListener("click", () => startMatch());
 document.querySelector("#leave-battle").addEventListener("click", showSelection);
-document.querySelector("#rematch").addEventListener("click", startMatch);
+document.querySelector("#rematch").addEventListener("click", () => startMatch(secretChallengeActive ? "entity" : null));
 document.querySelector("#return-to-select").addEventListener("click", showSelection);
 document.querySelector("#toggle-mode").addEventListener("click", () => {
   battleMode = battleMode === "cpu" ? "local" : "cpu";
@@ -848,14 +1083,58 @@ window.addEventListener("blur", clearInputState);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     cancelAnimationFrame(animationFrame);
-    keys.clear();
-    justPressed.clear();
+    clearInputState();
   } else {
     clock.start();
     lastFrameTime = 0;
     animationFrame = requestAnimationFrame(frame);
   }
 });
+
+const joystick = document.querySelector("#virtual-joystick");
+if (joystick) {
+  const knob = document.querySelector("#joystick-knob");
+  const directionKeys = ["KeyA", "KeyD", "KeyW", "KeyS"];
+  const moveJoystick = (event) => {
+    if (event.pointerId !== joystickPointerId) return;
+    const bounds = joystick.getBoundingClientRect();
+    const maxTravel = bounds.width * 0.34;
+    let x = event.clientX - (bounds.left + bounds.width / 2);
+    let y = event.clientY - (bounds.top + bounds.height / 2);
+    const distance = Math.hypot(x, y);
+    if (distance > maxTravel) {
+      x = (x / distance) * maxTravel;
+      y = (y / distance) * maxTravel;
+    }
+
+    knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    const horizontal = x / maxTravel;
+    const vertical = y / maxTravel;
+    const nextKeys = new Set();
+    if (horizontal < -0.25) nextKeys.add("KeyA");
+    if (horizontal > 0.25) nextKeys.add("KeyD");
+    if (vertical < -0.25) nextKeys.add("KeyW");
+    if (vertical > 0.25) nextKeys.add("KeyS");
+    directionKeys.forEach((code) => {
+      if (nextKeys.has(code)) virtualKeys.add(code);
+      else virtualKeys.delete(code);
+    });
+  };
+  const releaseJoystick = (event) => {
+    if (event.pointerId === joystickPointerId) resetJoystick();
+  };
+
+  joystick.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    joystickPointerId = event.pointerId;
+    joystick.setPointerCapture(event.pointerId);
+    moveJoystick(event);
+  });
+  joystick.addEventListener("pointermove", moveJoystick);
+  joystick.addEventListener("pointerup", releaseJoystick);
+  joystick.addEventListener("pointercancel", releaseJoystick);
+  joystick.addEventListener("lostpointercapture", releaseJoystick);
+}
 
 document.querySelectorAll(".touch-controls button").forEach((button) => {
   const code = button.dataset.key;
