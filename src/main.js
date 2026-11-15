@@ -6,7 +6,36 @@ const graphicsError = document.querySelector("#graphics-error");
 const graphicsErrorMessage = document.querySelector("#graphics-error-message");
 const knockoutFlash = document.querySelector("#knockout-flash");
 const knockoutName = document.querySelector("#knockout-name");
+const storageNotice = document.querySelector("#storage-notice");
+const fullscreenButton = document.querySelector("#toggle-fullscreen");
+const fullscreenNotice = document.querySelector("#fullscreen-notice");
 document.querySelector("#retry-graphics").addEventListener("click", () => window.location.reload());
+function updateFullscreenButton() {
+  const isFullscreen = Boolean(document.fullscreenElement);
+  fullscreenButton.textContent = isFullscreen ? "EXIT FULL SCREEN" : "FULL SCREEN";
+  fullscreenButton.setAttribute("aria-label", isFullscreen ? "Exit full screen" : "Enter full screen");
+}
+
+fullscreenButton.addEventListener("click", async () => {
+  fullscreenNotice.hidden = true;
+  try {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+    } else if (document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    } else {
+      fullscreenNotice.textContent = "Full screen is not supported by this browser.";
+      fullscreenNotice.hidden = false;
+    }
+  } catch (error) {
+    if (!(error instanceof TypeError)
+      && (!(error instanceof DOMException) || !["NotAllowedError", "SecurityError"].includes(error.name))) throw error;
+    fullscreenNotice.textContent = "Full screen is blocked in this view. Open Universe Crazy in its own tab to play full screen.";
+    fullscreenNotice.hidden = false;
+  }
+});
+document.addEventListener("fullscreenchange", updateFullscreenButton);
+updateFullscreenButton();
 let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
@@ -87,7 +116,32 @@ let titleScreenActive = true;
 let selectionScreenActive = false;
 let savedArenaIndex = 0;
 let savedBattleMode = "cpu";
-let entityUnlocked = localStorage.getItem("universeCrazyEntitySkin") === "unlocked";
+let unlockPersistenceAvailable = true;
+function readEntityUnlock() {
+  try {
+    return window.localStorage.getItem("universeCrazyEntitySkin") === "unlocked";
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") throw error;
+    unlockPersistenceAvailable = false;
+    storageNotice.hidden = false;
+    return false;
+  }
+}
+
+function saveEntityUnlock() {
+  if (!unlockPersistenceAvailable) return false;
+  try {
+    window.localStorage.setItem("universeCrazyEntitySkin", "unlocked");
+    return true;
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") throw error;
+    unlockPersistenceAvailable = false;
+    storageNotice.hidden = false;
+    return false;
+  }
+}
+
+let entityUnlocked = readEntityUnlock();
 const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur"];
 let matchTime = 180;
 let matchActive = false;
@@ -1226,10 +1280,12 @@ function finishMatch(winnerIndex, reason) {
     document.querySelector("#return-through-portal").hidden = false;
     if (!entityUnlocked) {
       entityUnlocked = true;
-      localStorage.setItem("universeCrazyEntitySkin", "unlocked");
+      const saved = saveEntityUnlock();
       document.querySelector('[data-fighter="entity"]').hidden = false;
       document.querySelector("#fighter-count").textContent = "09 FIGHTERS";
-      unlockMessage = " Entity.exe skin unlocked!";
+      unlockMessage = saved
+        ? " Entity.exe skin unlocked!"
+        : " Entity.exe skin unlocked for this visit; embedded storage is blocked, so it will not persist after reload.";
     }
   }
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";

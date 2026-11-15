@@ -27,7 +27,12 @@
       <section class="screen portal-screen" id="portal-screen" aria-labelledby="game-title">
         <div class="portal-copy">
           <h1 id="game-title">UNIVERSE<br><span>CRAZY</span></h1>
-          <button class="primary-button" id="enter-portal" type="button">START <span aria-hidden="true">↗</span></button>
+          <div class="portal-actions">
+            <button class="primary-button" id="enter-portal" type="button">START <span aria-hidden="true">↗</span></button>
+            <button class="secondary-button fullscreen-button" id="toggle-fullscreen" type="button">FULL SCREEN</button>
+          </div>
+          <p class="fullscreen-notice" id="fullscreen-notice" role="status" hidden></p>
+          <p class="storage-notice" id="storage-notice" role="status" hidden>Saved unlocks are unavailable in this embedded game, but gameplay is unaffected.</p>
         </div>
         <span class="sr-only" id="fighter-count">08 FIGHTERS</span>
       </section>
