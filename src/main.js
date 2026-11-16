@@ -165,21 +165,27 @@ const characters = {
     palette: { primary: "#f5bd4a", dark: "#282238", trim: "#ffe38a", accent: "#ff9452" },
     speed: 7.3,
     power: 0.9,
-    special: "sting"
+    special: "sting",
+    specialName: "Stinger Shot",
+    specialDescription: "Fires a fast, stinging energy bolt."
   },
   robot: {
     name: "Robot Boy",
     palette: { primary: "#638ec5", dark: "#1d2b4d", trim: "#b1f3ff", accent: "#53e9f4" },
     speed: 5.8,
     power: 1.25,
-    special: "dash"
+    special: "dash",
+    specialName: "Turbo Dash",
+    specialDescription: "Rocket forward and ram the closest rival."
   },
   nova: {
     name: "Nova Fox",
     palette: { primary: "#c27aff", dark: "#30224d", trim: "#ffe38a", accent: "#ff9d67" },
     speed: 7.1,
     power: 0.94,
-    special: "sting"
+    special: "starburst",
+    specialName: "Starburst",
+    specialDescription: "Fires three stars in a wide spread."
   },
   titan: {
     name: "Cinder Titan",
@@ -187,28 +193,36 @@ const characters = {
     speed: 4.9,
     power: 1.38,
     build: "heavy",
-    special: "quake"
+    special: "quake",
+    specialName: "Groundquake",
+    specialDescription: "Slams the ground with a nearby shockwave."
   },
   glitch: {
     name: "Glitch",
     palette: { primary: "#52d7bd", dark: "#18343d", trim: "#c2fff0", accent: "#ff5dcc" },
     speed: 6.4,
     power: 1.04,
-    special: "pulse"
+    special: "phase",
+    specialName: "Phase Blink",
+    specialDescription: "Warps behind a rival and strikes."
   },
   tide: {
     name: "Tide Runner",
     palette: { primary: "#479ce0", dark: "#18344c", trim: "#b5f6ff", accent: "#43f0d7" },
     speed: 7.6,
     power: 0.86,
-    special: "dash"
+    special: "wave",
+    specialName: "Tidal Wave",
+    specialDescription: "Sends a wide, hard-hitting wave forward."
   },
   frog: {
     name: "Moss Hopper",
     palette: { primary: "#63d274", dark: "#204d3b", trim: "#d8ff96", accent: "#88f0b0" },
     speed: 7.4,
     power: 0.92,
-    special: "sting"
+    special: "tongue",
+    specialName: "Tongue Lash",
+    specialDescription: "Snags a rival from farther away."
   },
   dinosaur: {
     name: "Rex Rumble",
@@ -216,7 +230,9 @@ const characters = {
     speed: 5.6,
     power: 1.22,
     build: "heavy",
-    special: "quake"
+    special: "fire",
+    specialName: "Fire Breath",
+    specialDescription: "Breathes fire in a burning cone."
   },
   entity: {
     name: "Entity.exe",
@@ -224,7 +240,9 @@ const characters = {
     speed: 5.5,
     power: 1.2,
     build: "heavy",
-    special: "pulse"
+    special: "void",
+    specialName: "Void Pulse",
+    specialDescription: "Pulls nearby rivals into a damaging rift."
   }
 };
 
@@ -1007,7 +1025,7 @@ function updateFighterPreview(kind) {
   arena.add(fighterPreview);
   animateBlink(fighterPreview, clock.elapsedTime);
   const description = document.querySelector(`[data-fighter="${kind}"] .fighter-card-copy small`).textContent;
-  document.querySelector("#preview-note").textContent = `${characters[kind].name} · ${description} · Animated 3D preview`;
+  document.querySelector("#preview-note").textContent = `${characters[kind].name} · ${description} · Special: ${characters[kind].specialName} — ${characters[kind].specialDescription}`;
 }
 
 function createSecretPowerUp() {
@@ -1107,9 +1125,16 @@ function updateArenaLabel() {
 }
 
 function updateControlsHint() {
+  const specialKeys = ["K", "Shift", "U", "Numpad 2"];
+  const localFighters = fighters.length
+    ? fighters.map((fighter) => fighter.kind)
+    : [selectedFighter, ...regularCharacterIds.filter((kind) => kind !== selectedFighter).slice(0, 3)];
+  const localSpecials = localFighters.map((kind, index) => {
+    return `P${index + 1} ${characters[kind].specialName} (${specialKeys[index]})`;
+  }).join(" · ");
   const controls = battleMode === "cpu"
-    ? "Solo vs. 3 CPUs: WASD move · Space jump · J fight · K special"
-    : "Local 4-player (half speed): P1 WASD/J/K · P2 Arrows/Enter/Shift · P3 TFGH/Y/U · P4 Numpad 4,5,6,8 / 1,2,0";
+    ? `Solo vs. 3 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
+    : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Specials: ${localSpecials}`;
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
 }
@@ -1296,21 +1321,215 @@ function finishMatch(winnerIndex, reason) {
   document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
 }
 
-function launchProjectile(fighter) {
-  const projectile = addMesh(arena, new THREE.SphereGeometry(0.27, 16, 12), new THREE.MeshStandardMaterial({
-    color: "#ffe36f", emissive: "#ff9d35", emissiveIntensity: 2.3, roughness: 0.2
-  }), [fighter.x + fighter.facing * 0.8, fighter.y + 1.35, fighter.z]);
-  const halo = addMesh(projectile, new THREE.TorusGeometry(0.39, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color: "#fff1a6" }), [0, 0, 0]);
+function launchProjectile(fighter, options = {}) {
+  const {
+    color = "#ffe36f",
+    emissive = "#ff9d35",
+    radius = 0.27,
+    speed = 13,
+    life = 1.5,
+    damage = 9,
+    force = 4.2,
+    vz = 0,
+    offsetZ = 0,
+    shape = "sphere"
+  } = options;
+  const geometry = shape === "star"
+    ? new THREE.OctahedronGeometry(radius, 1)
+    : shape === "wave"
+      ? new THREE.TorusGeometry(radius * 1.2, radius * 0.24, 8, 24)
+      : new THREE.SphereGeometry(radius, 16, 12);
+  const projectile = addMesh(arena, geometry, new THREE.MeshStandardMaterial({
+    color, emissive, emissiveIntensity: 2.3, roughness: 0.2
+  }), [fighter.x + fighter.facing * 0.8, fighter.y + 1.35, fighter.z + offsetZ]);
+  const halo = addMesh(projectile, new THREE.TorusGeometry(radius * 1.45, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color }), [0, 0, 0]);
   halo.rotation.x = Math.PI / 2;
   projectile.userData.spin = 4;
   projectiles.push({
     mesh: projectile,
     owner: fighter,
-    vx: fighter.facing * 13,
-    life: 1.5,
-    damage: 9,
+    vx: fighter.facing * speed,
+    vz,
+    life,
+    damage,
+    force,
+    hitRadius: radius + 0.55,
     power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
   });
+}
+
+function spawnAbilityRing(fighter, color, duration = 0.45) {
+  const effect = new THREE.Group();
+  effect.position.set(fighter.x, fighter.y + 0.12, fighter.z);
+  const ring = addMesh(effect, new THREE.TorusGeometry(0.55, 0.09, 8, 24), new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity: 0.9, depthWrite: false
+  }), [0, 0, 0]);
+  ring.rotation.x = Math.PI / 2;
+  ring.userData.abilityRing = true;
+  arena.add(effect);
+  effect.userData.duration = duration;
+  effect.userData.remaining = duration;
+  hitEffects.push(effect);
+  cameraShake = Math.max(cameraShake, 0.24);
+}
+
+function applyAreaAbility(fighter, { radius, damage, force, color, pull = false }) {
+  const boost = fighter.powerBoost > 0 ? 1.7 : 1;
+  spawnAbilityRing(fighter, color);
+  for (const target of fighters) {
+    if (target === fighter || target.eliminated || target.respawn > 0) continue;
+    const dx = target.x - fighter.x;
+    const dz = target.z - fighter.z;
+    if (Math.hypot(dx, dz) > radius || Math.abs(target.y - fighter.y) > 2.2) continue;
+    hitTarget(fighter, target, damage * characters[fighter.kind].power * boost, force);
+    const toward = pull ? -1 : 1;
+    target.vx += Math.sign(dx || fighter.facing) * force * 0.45 * toward;
+    target.vz += Math.sign(dz || 1) * force * 0.35 * toward;
+  }
+}
+
+function spawnTongueEffect(fighter, target) {
+  const start = new THREE.Vector3(fighter.x + fighter.facing * 0.6, fighter.y + 1.35, fighter.z);
+  const end = new THREE.Vector3(target.x, target.y + 1.3, target.z);
+  const direction = end.clone().sub(start);
+  const effect = new THREE.Group();
+  const tongue = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.14, direction.length(), 8),
+    new THREE.MeshBasicMaterial({ color: "#ff6d99", transparent: true, opacity: 0.95 })
+  );
+  tongue.position.copy(start).add(end).multiplyScalar(0.5);
+  tongue.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  tongue.userData.fade = true;
+  effect.add(tongue);
+  arena.add(effect);
+  effect.userData.duration = 0.24;
+  effect.userData.remaining = 0.24;
+  hitEffects.push(effect);
+}
+
+function spawnFireBreath(fighter) {
+  const effect = new THREE.Group();
+  const sign = fighter.facing;
+  effect.position.set(fighter.x + sign * 2.15, fighter.y + 1.35, fighter.z);
+  const outerFlame = addMesh(effect, new THREE.ConeGeometry(1.05, 3.8, 14), new THREE.MeshBasicMaterial({
+    color: "#ff6338", transparent: true, opacity: 0.78, depthWrite: false
+  }), [0, 0, 0]);
+  outerFlame.rotation.z = sign > 0 ? -Math.PI / 2 : Math.PI / 2;
+  outerFlame.userData.fade = true;
+  const innerFlame = addMesh(effect, new THREE.ConeGeometry(0.52, 2.8, 12), new THREE.MeshBasicMaterial({
+    color: "#ffd166", transparent: true, opacity: 0.9, depthWrite: false
+  }), [sign * 0.12, 0, 0]);
+  innerFlame.rotation.z = sign > 0 ? -Math.PI / 2 : Math.PI / 2;
+  innerFlame.userData.fade = true;
+  arena.add(effect);
+  effect.userData.duration = 0.42;
+  effect.userData.remaining = 0.42;
+  hitEffects.push(effect);
+  cameraShake = Math.max(cameraShake, 0.2);
+
+  const boost = fighter.powerBoost > 0 ? 1.7 : 1;
+  for (const target of fighters) {
+    if (target === fighter || target.eliminated || target.respawn > 0) continue;
+    const dx = target.x - fighter.x;
+    const distance = dx * sign;
+    const width = 0.55 + Math.max(0, distance) * 0.3;
+    if (distance <= 0.35 || distance > 4.5 || Math.abs(target.z - fighter.z) > width) continue;
+    hitTarget(fighter, target, 11 * characters[fighter.kind].power * boost, 5.8);
+  }
+}
+
+function useSpecialAbility(fighter) {
+  const character = characters[fighter.kind];
+  document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
+  const boost = fighter.powerBoost > 0 ? 1.7 : 1;
+
+  switch (character.special) {
+    case "sting":
+      launchProjectile(fighter, { color: "#ffe36f", emissive: "#ff9d35", damage: 10, force: 4.8 });
+      break;
+    case "dash": {
+      fighter.vx = fighter.facing * 14;
+      const target = nearestOpponent(fighter);
+      if (target && (target.x - fighter.x) * fighter.facing > -0.5
+        && Math.abs(target.z - fighter.z) < 1.9
+        && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 3.3) {
+        hitTarget(fighter, target, 13 * character.power * boost, 6.8);
+      }
+      spawnAbilityRing(fighter, "#53e9f4", 0.3);
+      break;
+    }
+    case "starburst":
+      [-1, 0, 1].forEach((spread) => launchProjectile(fighter, {
+        shape: "star",
+        color: "#ff9fea",
+        emissive: "#bf5aff",
+        radius: 0.22,
+        speed: 11,
+        life: 1.35,
+        damage: 6.5,
+        force: 3.6,
+        vz: spread * 2.8,
+        offsetZ: spread * 0.13
+      }));
+      break;
+    case "quake":
+      applyAreaAbility(fighter, { radius: 3.7, damage: 14, force: 7.2, color: "#ff8b4c" });
+      break;
+    case "phase": {
+      const target = nearestOpponent(fighter);
+      spawnAbilityRing(fighter, "#ff5dcc", 0.3);
+      if (!target) {
+        fighter.vx = fighter.facing * 9;
+        break;
+      }
+      fighter.x = THREE.MathUtils.clamp(target.x - target.facing * 1.2, -floorRadius + 1, floorRadius - 1);
+      fighter.z = THREE.MathUtils.clamp(target.z, -floorRadius + 1, floorRadius - 1);
+      fighter.facing = Math.sign(target.x - fighter.x) || fighter.facing;
+      fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+      spawnAbilityRing(fighter, "#ff5dcc", 0.3);
+      if (Math.hypot(target.x - fighter.x, target.z - fighter.z) < 2.1) {
+        hitTarget(fighter, target, 13 * character.power * boost, 5.7);
+      }
+      break;
+    }
+    case "wave":
+      launchProjectile(fighter, {
+        shape: "wave",
+        color: "#80f8e6",
+        emissive: "#38c9ff",
+        radius: 0.62,
+        speed: 8.5,
+        life: 1.7,
+        damage: 13,
+        force: 7.4
+      });
+      break;
+    case "tongue": {
+      const target = fighters
+        .filter((opponent) => opponent !== fighter && !opponent.eliminated && opponent.respawn <= 0)
+        .filter((opponent) => {
+          const dx = opponent.x - fighter.x;
+          const dz = opponent.z - fighter.z;
+          return dx * fighter.facing > 0 && Math.abs(dz) < 1.8 && Math.hypot(dx, dz) < 5.4;
+        })
+        .sort((a, b) => Math.hypot(a.x - fighter.x, a.z - fighter.z) - Math.hypot(b.x - fighter.x, b.z - fighter.z))[0];
+      if (target) {
+        spawnTongueEffect(fighter, target);
+        hitTarget(fighter, target, 10 * character.power * boost, 3.6);
+        target.vx += Math.sign(fighter.x - target.x) * 4.2;
+        target.vz += Math.sign(fighter.z - target.z || 1) * 2;
+      }
+      break;
+    }
+    case "fire":
+      spawnFireBreath(fighter);
+      break;
+    case "void":
+      applyAreaAbility(fighter, { radius: 4.6, damage: 13, force: 5.6, color: "#b774ff", pull: true });
+      break;
+    default:
+      throw new Error(`Unknown special ability "${character.special}" for ${character.name}.`);
+  }
 }
 
 function spawnImpact(target, heavy) {
@@ -1325,6 +1544,7 @@ function spawnImpact(target, heavy) {
     spark.userData.velocity = new THREE.Vector3(Math.cos(angle) * 3, 1.5 + (i % 3) * 0.6, Math.sin(angle) * 2.2);
   }
   arena.add(effect);
+  effect.userData.duration = 0.3;
   effect.userData.remaining = 0.3;
   hitEffects.push(effect);
   cameraShake = Math.max(cameraShake, heavy ? 0.32 : 0.19);
@@ -1463,21 +1683,19 @@ function tryActivateSecretSeal(fighter) {
 function attack(fighter, target, special = false) {
   if (fighter.cooldown > 0 || !matchActive) return;
   if (special && fighter.specialCooldown > 0) return;
-  fighter.cooldown = special ? 0.55 : 0.42;
-  fighter.attackPose = special ? 0.55 : 0.34;
-  if (special) fighter.specialCooldown = 4;
-
-  if (special && characters[fighter.kind].special === "sting") {
-    launchProjectile(fighter);
+  if (special) {
+    fighter.cooldown = 0.55;
+    fighter.attackPose = 0.55;
+    fighter.specialCooldown = 4;
+    useSpecialAbility(fighter);
     return;
   }
 
-  if (special && characters[fighter.kind].special === "dash") {
-    fighter.vx = fighter.facing * 12;
-  }
+  fighter.cooldown = 0.42;
+  fighter.attackPose = 0.34;
 
   if (!target) {
-    const reach = special ? 2.6 : 2.15;
+    const reach = 2.15;
     target = fighters
       .filter((opponent) => opponent !== fighter && !opponent.eliminated && opponent.respawn <= 0)
       .filter((opponent) => {
@@ -1491,13 +1709,13 @@ function attack(fighter, target, special = false) {
   if (!target) return;
   const dx = target.x - fighter.x;
   const dz = target.z - fighter.z;
-  const inReach = Math.hypot(dx, dz) < (special ? 2.6 : 2.15);
+  const inReach = Math.hypot(dx, dz) < 2.15;
   const inFront = dx * fighter.facing > -0.65;
   if (inReach && Math.abs(dz) < 1.75 && inFront) {
     const boost = fighter.powerBoost > 0 ? 1.7 : 1;
-    hitTarget(fighter, target, (special ? 12 : 7) * characters[fighter.kind].power * boost, special ? 5.8 : 3.8);
+    hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 3.8);
   }
-  if (!special) tryActivateSecretSeal(fighter);
+  tryActivateSecretSeal(fighter);
 }
 
 function nearestOpponent(fighter) {
@@ -1755,20 +1973,22 @@ function updateProjectiles(delta) {
     const projectile = projectiles[i];
     projectile.life -= delta;
     projectile.mesh.position.x += projectile.vx * delta;
+    projectile.mesh.position.z += projectile.vz * delta;
     projectile.mesh.rotation.y += delta * 4;
     for (const target of fighters) {
       if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
       const dx = projectile.mesh.position.x - target.x;
       const dy = projectile.mesh.position.y - (target.y + 1.3);
       const dz = projectile.mesh.position.z - target.z;
-      if (dx * dx + dy * dy + dz * dz < 0.85 * 0.85) {
-        hitTarget(projectile.owner, target, projectile.damage * projectile.power, 4.2);
+      if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
+        hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
         projectile.life = 0;
         break;
       }
     }
     if (projectile.life <= 0 || Math.abs(projectile.mesh.position.x) > 12) {
       arena.remove(projectile.mesh);
+      disposeObject(projectile.mesh);
       projectiles.splice(i, 1);
     }
   }
@@ -1778,14 +1998,16 @@ function updateHitEffects(delta) {
   for (let i = hitEffects.length - 1; i >= 0; i -= 1) {
     const effect = hitEffects[i];
     effect.userData.remaining -= delta;
-    const progress = 1 - effect.userData.remaining / 0.3;
+    const progress = 1 - effect.userData.remaining / (effect.userData.duration || 0.3);
     effect.children.forEach((child) => {
-      if (child.userData.impactRing) {
-        child.scale.setScalar(1 + progress * 2.2);
+      if (child.userData.impactRing || child.userData.abilityRing) {
+        child.scale.setScalar(1 + progress * (child.userData.abilityRing ? 4.8 : 2.2));
         child.material.opacity = Math.max(0, 1 - progress);
       } else if (child.userData.velocity) {
         child.position.addScaledVector(child.userData.velocity, delta);
         child.userData.velocity.y -= 9 * delta;
+        child.material.opacity = Math.max(0, 1 - progress);
+      } else if (child.userData.fade) {
         child.material.opacity = Math.max(0, 1 - progress);
       }
     });
@@ -1958,6 +2180,7 @@ createArena(arenaIndex);
 updateArenaLabel();
 document.querySelector('[data-fighter="entity"]').hidden = !entityUnlocked;
 document.querySelector("#fighter-count").textContent = entityUnlocked ? "09 FIGHTERS" : "08 FIGHTERS";
+updateControlsHint();
 
 document.querySelector("#enter-portal").addEventListener("click", showSelection);
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
@@ -1980,6 +2203,7 @@ document.querySelectorAll(".fighter-card").forEach((card) => {
   card.addEventListener("click", () => {
     selectedFighter = card.dataset.fighter;
     updateFighterPreview(selectedFighter);
+    updateControlsHint();
     document.querySelectorAll(".fighter-card").forEach((item) => {
       const selected = item === card;
       item.classList.toggle("selected", selected);

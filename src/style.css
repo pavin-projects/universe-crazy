@@ -103,6 +103,7 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .fighter-card-copy { display: grid; gap: 5px; padding: 0 4px; }
 .fighter-card-copy strong { font-family: "Space Grotesk", sans-serif; font-size: 1.05rem; }
 .fighter-card-copy small { color: #b3b5ca; font-size: .68rem; }
+.fighter-card-copy .ability-note { color: #ffe08b; font-size: .66rem; font-weight: 700; }
 .fighter-type { color: #a39acb; font-size: .59rem; font-weight: 800; letter-spacing: .13em; }
 .pick-indicator { position: absolute; top: 9px; right: 10px; display: grid; width: 20px; height: 20px; place-items: center; border-radius: 50%; background: #8d78f5; color: white; font-size: .7rem; opacity: 0; }
 .fighter-card.selected .pick-indicator { opacity: 1; }
