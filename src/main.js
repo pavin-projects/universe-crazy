@@ -10,6 +10,283 @@ const storageNotice = document.querySelector("#storage-notice");
 const fullscreenButton = document.querySelector("#toggle-fullscreen");
 const fullscreenNotice = document.querySelector("#fullscreen-notice");
 document.querySelector("#retry-graphics").addEventListener("click", () => window.location.reload());
+const musicButton = document.querySelector("#toggle-music");
+const musicButtonLabel = document.querySelector("#music-toggle-label");
+const musicTrackButton = document.querySelector("#next-track");
+const musicTrackLabel = document.querySelector("#music-track-label");
+const musicStatus = document.querySelector("#music-status");
+const musicScales = {
+  major: [0, 2, 4, 5, 7, 9, 11, 12],
+  minor: [0, 2, 3, 5, 7, 8, 10, 12],
+  dorian: [0, 2, 3, 5, 7, 9, 10, 12],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10, 12],
+  pentatonic: [0, 2, 4, 7, 9, 12, 14, 16],
+  phrygian: [0, 1, 3, 5, 7, 8, 10, 12],
+  harmonicMinor: [0, 2, 3, 5, 7, 8, 11, 12]
+};
+// Musical, structured 16-step motif patterns (indices into the track's scale, -1 = rest)
+const musicMotifs = [
+  [0, 2, 4, 2, 5, 4, 2, -1, 4, 5, 7, 5, 4, 2, 0, -1],
+  [0, -1, 4, 2, 3, -1, 5, 4, 2, -1, 3, 1, 0, -1, 2, -1],
+  [0, 4, 7, 4, 5, 4, 2, 4, 0, 4, 7, 5, 4, 2, 1, 0],
+  [4, 2, 0, 2, 4, 4, 4, -1, 2, 2, 2, -1, 4, 7, 7, -1],
+  [0, 0, 4, 4, 5, 5, 4, -1, 3, 3, 2, 2, 1, 1, 0, -1],
+  [0, 3, 5, 7, 5, 3, 2, -1, 0, 3, 5, 6, 5, 3, 2, 0],
+  [7, 5, 4, 2, 0, 2, 4, 5, 7, 5, 4, 2, 3, 2, 1, 0],
+  [0, 2, 3, 5, 7, 5, 3, 2, 0, 2, 3, 5, 4, 2, 0, -1]
+];
+const musicTrackSeeds = [
+  ["Starlight Pulse", 112, 60, "major", "triangle", "standard", 0, null],
+  ["Nebula Drift", 104, 57, "minor", "sine", "standard", 1, null],
+  ["Portal Rush", 132, 62, "minor", "triangle", "eerie", 2, null],
+  ["Solar Flare", 128, 64, "mixolydian", "triangle", "standard", 3, null],
+  ["Comet Chase", 126, 65, "pentatonic", "triangle", "standard", 4, null],
+  ["Void Echoes", 112, 55, "harmonicMinor", "triangle", "scary", 5, null],
+  ["Skyforge Anthem", 120, 67, "major", "triangle", "standard", 0, null],
+  ["Emberfall Beat", 130, 58, "harmonicMinor", "sawtooth", "scary", 7, null],
+  ["Frostline Waltz", 108, 63, "dorian", "sine", "standard", 1, null],
+  ["Verdant Groove", 118, 60, "pentatonic", "triangle", "standard", 4, null],
+  ["Neon Arcade", 136, 64, "minor", "triangle", "eerie", 2, null],
+  ["Tidal Horizon", 110, 62, "major", "sine", "standard", 3, null],
+  ["Sunken Crown", 106, 57, "harmonicMinor", "triangle", "scary", 6, null],
+  ["Moonfall Sprint", 134, 66, "dorian", "triangle", "eerie", 5, null],
+  ["Crystal Cavern", 106, 65, "major", "sine", "standard", 0, null],
+  ["Thunderhead", 134, 57, "harmonicMinor", "sawtooth", "scary", 7, null],
+  ["Bumble Bounce", 126, 67, "pentatonic", "triangle", "battle", 4, "bumble"],
+  ["Robot Circuit", 130, 62, "dorian", "square", "battle", 2, "robot"],
+  ["Foxfire Dash", 128, 64, "major", "triangle", "battle", 0, "nova"],
+  ["Titan Stomp", 108, 53, "harmonicMinor", "sawtooth", "battle", 6, "titan"],
+  ["Glitch Hop", 134, 64, "minor", "square", "battle", 2, "glitch"],
+  ["Tide Runner", 122, 60, "mixolydian", "triangle", "battle", 3, "tide"],
+  ["Mossy Leap", 118, 65, "pentatonic", "sine", "battle", 4, "frog"],
+  ["Dino Roar", 132, 55, "harmonicMinor", "sawtooth", "battle", 7, "dinosaur"],
+  ["Monkey Swing", 128, 67, "mixolydian", "triangle", "battle", 1, "monkey"],
+  ["Lizard Lounge", 116, 62, "dorian", "triangle", "battle", 5, "lizard"],
+  ["Orbital Ring", 124, 64, "major", "triangle", "standard", 3, null],
+  ["Zero Gravity", 132, 59, "minor", "sine", "eerie", 1, null],
+  ["Null Abyss", 138, 52, "harmonicMinor", "sawtooth", "scary", 5, "entity"],
+  ["Victory Galaxy", 126, 60, "major", "triangle", "standard", 0, null]
+];
+const musicTracks = musicTrackSeeds.map(([title, bpm, root, scaleName, wave, mood, motifIndex, fighterKind]) => {
+  const scale = musicScales[scaleName];
+  const motif = musicMotifs[motifIndex % musicMotifs.length];
+  const toMidi = (deg) => (deg === -1 ? null : root + 12 + scale[deg % scale.length]);
+  const melody = [...motif.map(toMidi), ...motif.map((deg, idx) => (deg === -1 ? null : toMidi(idx === 15 ? 0 : deg)))];
+  const progressions = [
+    [0, 5, 3, 4],
+    [0, 3, 4, 0],
+    [0, 4, 5, 3],
+    [0, 2, 3, 4]
+  ];
+  const progression = progressions[motifIndex % progressions.length];
+  const chords = progression.map((deg) => {
+    const bass = root - 12 + scale[deg % scale.length];
+    const c1 = root + scale[deg % scale.length];
+    const c2 = root + scale[(deg + 2) % scale.length];
+    const c3 = root + scale[(deg + 4) % scale.length];
+    return { bass, chord: [c1, c2, c3] };
+  });
+  return { title, bpm, wave, mood, fighterKind, melody, chords, stepDuration: 60 / bpm / 2 };
+});
+let currentMusicScene = "title";
+let currentTrackIndex = 0;
+let musicLoopCount = 0;
+let musicEnabled = true;
+let musicContext = null;
+let musicFilter = null;
+let musicMasterGain = null;
+let musicScheduler = null;
+let nextMusicStepTime = 0;
+let musicStep = 0;
+
+function playMusicTone(frequency, startTime, duration, volume, type) {
+  const oscillator = musicContext.createOscillator();
+  const envelope = musicContext.createGain();
+  oscillator.type = type;
+  oscillator.frequency.setValueAtTime(frequency, startTime);
+  envelope.gain.setValueAtTime(0.0001, startTime);
+  envelope.gain.exponentialRampToValueAtTime(volume, startTime + 0.02);
+  envelope.gain.exponentialRampToValueAtTime(0.0001, startTime + duration);
+  oscillator.connect(envelope);
+  envelope.connect(musicFilter);
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration + 0.03);
+}
+
+function playMusicKick(startTime) {
+  const osc = musicContext.createOscillator();
+  const env = musicContext.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(112, startTime);
+  osc.frequency.exponentialRampToValueAtTime(44, startTime + 0.11);
+  env.gain.setValueAtTime(0.36, startTime);
+  env.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.12);
+  osc.connect(env);
+  env.connect(musicMasterGain);
+  osc.start(startTime);
+  osc.stop(startTime + 0.14);
+}
+
+function scheduleMusicStep(step, startTime) {
+  const track = musicTracks[currentTrackIndex];
+  const melodyNote = track.melody[step];
+  if (melodyNote !== null && melodyNote >= 0) {
+    const vol = track.wave === "sawtooth" || track.wave === "square" ? 0.16 : 0.28;
+    playMusicTone(440 * (2 ** ((melodyNote - 69) / 12)), startTime, track.stepDuration * 0.9, vol, track.wave);
+  }
+  if (step % 4 === 0) playMusicKick(startTime);
+  if (step % 8 === 0) {
+    const chord = track.chords[Math.floor(step / 8)];
+    playMusicTone(440 * (2 ** ((chord.bass - 69) / 12)), startTime, track.stepDuration * 3.4, 0.34, "triangle");
+    chord.chord.forEach((note) => {
+      playMusicTone(440 * (2 ** ((note - 69) / 12)), startTime, track.stepDuration * 7.2, 0.075, "sine");
+    });
+  }
+}
+
+function updateMusicButton() {
+  const track = musicTracks[currentTrackIndex];
+  musicButtonLabel.textContent = `Music: ${musicEnabled ? "On" : "Off"}`;
+  musicButton.setAttribute("aria-pressed", String(musicEnabled));
+  musicButton.setAttribute("aria-label", musicEnabled ? "Mute music" : "Turn music on");
+  musicTrackLabel.textContent = `Track ${currentTrackIndex + 1}/30 · ${track.title}`;
+}
+
+function handleMusicError(error) {
+  if (!(error instanceof DOMException)
+    || !["NotAllowedError", "InvalidStateError"].includes(error.name)) throw error;
+  musicStatus.textContent = "Music could not start. Try pressing the music button again.";
+}
+
+async function startMusic() {
+  if (!musicEnabled) return;
+  if (!window.AudioContext) {
+    musicEnabled = false;
+    musicStatus.textContent = "Music is not supported by this browser.";
+    musicButton.disabled = true;
+    musicTrackButton.disabled = true;
+    musicButtonLabel.textContent = "Music unavailable";
+    musicButton.setAttribute("aria-pressed", "false");
+    return;
+  }
+  if (!musicContext) {
+    musicContext = new window.AudioContext();
+    const compressor = musicContext.createDynamicsCompressor();
+    musicFilter = musicContext.createBiquadFilter();
+    musicFilter.type = "lowpass";
+    musicFilter.frequency.value = 2100;
+    musicFilter.Q.value = 1.2;
+    musicMasterGain = musicContext.createGain();
+    musicMasterGain.gain.value = 0.0001;
+    musicFilter.connect(musicMasterGain);
+    musicMasterGain.connect(compressor);
+    compressor.connect(musicContext.destination);
+  }
+  if (musicContext.state !== "running") await musicContext.resume();
+  musicMasterGain.gain.setTargetAtTime(0.58, musicContext.currentTime, 0.1);
+  if (musicScheduler !== null) return;
+  nextMusicStepTime = musicContext.currentTime + 0.04;
+  musicStep = 0;
+  musicLoopCount = 0;
+  musicScheduler = window.setInterval(() => {
+    const now = musicContext.currentTime;
+    if (nextMusicStepTime < now - 0.25) nextMusicStepTime = now + 0.04;
+    const scheduleUntil = now + 0.14;
+    while (nextMusicStepTime < scheduleUntil) {
+      const track = musicTracks[currentTrackIndex];
+      scheduleMusicStep(musicStep, nextMusicStepTime);
+      nextMusicStepTime += track.stepDuration;
+      musicStep += 1;
+      if (musicStep >= track.melody.length) {
+        musicStep = 0;
+        musicLoopCount += 1;
+        if (musicLoopCount >= 2) {
+          musicLoopCount = 0;
+          const desiredMood = currentMusicScene === "battle" ? "scary" : currentMusicScene === "select" ? "eerie" : "standard";
+          let nextIndex = (currentTrackIndex + 1) % musicTracks.length;
+          for (let offset = 1; offset <= musicTracks.length; offset += 1) {
+            const candidate = (currentTrackIndex + offset) % musicTracks.length;
+            if (musicTracks[candidate].mood === desiredMood) {
+              nextIndex = candidate;
+              break;
+            }
+          }
+          currentTrackIndex = nextIndex;
+          updateMusicButton();
+        }
+      }
+    }
+  }, 45);
+  updateMusicButton();
+  musicStatus.textContent = `Playing Track ${currentTrackIndex + 1} of 30: ${musicTracks[currentTrackIndex].title}.`;
+}
+
+function nextMusicTrack() {
+  currentTrackIndex = (currentTrackIndex + 1) % musicTracks.length;
+  musicStep = 0;
+  musicLoopCount = 0;
+  if (musicContext) nextMusicStepTime = musicContext.currentTime + 0.04;
+  updateMusicButton();
+  if (!musicEnabled) {
+    musicEnabled = true;
+    updateMusicButton();
+  }
+  startMusic().catch(handleMusicError);
+}
+
+function setMusicScene(sceneName, opponentKind = null) {
+  currentMusicScene = sceneName;
+  let matchingIndex = -1;
+  if (sceneName === "battle" && opponentKind) {
+    matchingIndex = musicTracks.findIndex((track) => track.fighterKind === opponentKind);
+  }
+  if (matchingIndex === -1) {
+    const desiredMood = sceneName === "battle" ? "scary" : sceneName === "select" ? "eerie" : "standard";
+    if (musicTracks[currentTrackIndex].mood !== desiredMood) {
+      matchingIndex = musicTracks.findIndex((track) => track.mood === desiredMood);
+    }
+  }
+  if (matchingIndex !== -1 && matchingIndex !== currentTrackIndex) {
+    currentTrackIndex = matchingIndex;
+    musicStep = 0;
+    musicLoopCount = 0;
+    if (musicContext) nextMusicStepTime = musicContext.currentTime + 0.04;
+  }
+  updateMusicButton();
+  if (musicEnabled && musicContext) startMusic().catch(handleMusicError);
+}
+
+function pauseMusic() {
+  if (musicScheduler !== null) {
+    window.clearInterval(musicScheduler);
+    musicScheduler = null;
+  }
+  if (musicContext?.state === "running") {
+    musicMasterGain.gain.setValueAtTime(0.0001, musicContext.currentTime);
+    musicContext.suspend().catch(handleMusicError);
+  }
+}
+
+musicButton.addEventListener("click", () => {
+  musicEnabled = !musicEnabled;
+  updateMusicButton();
+  if (musicEnabled) {
+    startMusic().catch(handleMusicError);
+  } else {
+    pauseMusic();
+    musicStatus.textContent = "Music muted.";
+  }
+});
+musicTrackButton.addEventListener("click", nextMusicTrack);
+updateMusicButton();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    pauseMusic();
+  } else if (musicEnabled && musicContext) {
+    startMusic().catch(handleMusicError);
+  }
+});
+
 function updateFullscreenButton() {
   const isFullscreen = Boolean(document.fullscreenElement);
   fullscreenButton.textContent = isFullscreen ? "EXIT FULL SCREEN" : "FULL SCREEN";
@@ -70,15 +347,16 @@ const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerH
 camera.position.set(0, 10.8, 25.5);
 camera.lookAt(0, 1.4, 0);
 
-scene.add(new THREE.HemisphereLight("#b7c8ff", "#222032", 2.25));
-const keyLight = new THREE.DirectionalLight("#fff1d1", 3.5);
+scene.add(new THREE.HemisphereLight("#c9d8ff", "#1c1a2e", 2.35));
+const keyLight = new THREE.DirectionalLight("#fff1d1", 3.6);
 keyLight.position.set(-5, 11, 8);
 keyLight.castShadow = false;
-keyLight.shadow.camera.left = -12;
-keyLight.shadow.camera.right = 12;
-keyLight.shadow.camera.top = 14;
-keyLight.shadow.camera.bottom = -12;
 scene.add(keyLight);
+
+const rimLight = new THREE.DirectionalLight("#7fd8ff", 1.45);
+rimLight.position.set(6, 8, -9);
+rimLight.castShadow = false;
+scene.add(rimLight);
 
 const portalLight = new THREE.PointLight("#8b73ff", 18, 12, 2);
 portalLight.position.set(0, 3.2, -5.2);
@@ -142,7 +420,7 @@ function saveEntityUnlock() {
 }
 
 let entityUnlocked = readEntityUnlock();
-const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur"];
+const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur", "monkey", "lizard"];
 let matchTime = 180;
 let matchActive = false;
 let matchEnded = false;
@@ -151,9 +429,10 @@ let effectTime = 0;
 let displayedSecond = -1;
 let hudDirty = true;
 let knockoutFlashTimer = 0;
+const yAxis = new THREE.Vector3(0, 1, 0);
 let animationFrame = 0;
 let lastFrameTime = 0;
-const frameInterval = 1000 / 45;
+const frameInterval = 1000 / 60;
 let joystickPointerId = null;
 let cameraShake = 0;
 let graphicsContextLost = false;
@@ -180,7 +459,7 @@ const characters = {
   },
   nova: {
     name: "Nova Fox",
-    palette: { primary: "#c27aff", dark: "#30224d", trim: "#ffe38a", accent: "#ff9d67" },
+    palette: { primary: "#ff7b29", dark: "#4d2310", trim: "#ffd082", accent: "#ffae42" },
     speed: 7.1,
     power: 0.94,
     special: "starburst",
@@ -226,13 +505,31 @@ const characters = {
   },
   dinosaur: {
     name: "Rex Rumble",
-    palette: { primary: "#f0784d", dark: "#57313f", trim: "#ffd166", accent: "#ff9d59" },
+    palette: { primary: "#2f7d3a", dark: "#122618", trim: "#9be858", accent: "#ff3b30" },
     speed: 5.6,
     power: 1.22,
     build: "heavy",
     special: "fire",
     specialName: "Fire Breath",
     specialDescription: "Breathes fire in a burning cone."
+  },
+  monkey: {
+    name: "Monkeyman",
+    palette: { primary: "#8b5a2b", dark: "#3a2210", trim: "#e6b88a", accent: "#ffe135" },
+    speed: 7.5,
+    power: 0.94,
+    special: "banana",
+    specialName: "Banana Peel",
+    specialDescription: "Drops a banana peel that makes any fighter slip and fall."
+  },
+  lizard: {
+    name: "Surface Lizard",
+    palette: { primary: "#2f9e44", dark: "#0d0e14", trim: "#e03434", accent: "#9be858" },
+    speed: 6.9,
+    power: 1.08,
+    special: "tongue",
+    specialName: "Tongue Lash",
+    specialDescription: "Snags a rival with a long lizard tongue."
   },
   entity: {
     name: "Entity.exe",
@@ -296,7 +593,7 @@ function seededRandom(seed) {
 
 function createStars() {
   const vertices = [];
-  for (let i = 0; i < 520; i += 1) {
+  for (let i = 0; i < 360; i += 1) {
     const radius = 30 + Math.random() * 45;
     const theta = Math.random() * Math.PI * 2;
     const y = Math.random() * 35 - 4;
@@ -304,13 +601,13 @@ function createStars() {
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  const points = new THREE.Points(geometry, new THREE.PointsMaterial({ color: "#d9ddff", size: 0.12, sizeAttenuation: true, transparent: true, opacity: 0.85 }));
+  const points = new THREE.Points(geometry, new THREE.PointsMaterial({ color: "#d9ddff", size: 0.13, sizeAttenuation: true, transparent: true, opacity: 0.85 }));
   starField = points;
   scene.add(starField);
 
   const spiralPositions = [];
   const spiralColors = [];
-  for (let i = 0; i < 1600; i += 1) {
+  for (let i = 0; i < 950; i += 1) {
     const arm = i % 4;
     const radius = 0.7 + Math.random() * 22;
     const angle = arm * Math.PI / 2 + radius * 0.22 + (Math.random() - 0.5) * 0.38;
@@ -506,8 +803,8 @@ function createPortal() {
     addMesh(portal, new THREE.BoxGeometry(0.52, 0.18, 0.52), glow, [x, 1.32, 0.15]);
   }
 
-  const moteGeometry = new THREE.SphereGeometry(0.035, 7, 7);
-  for (let i = 0; i < 42; i += 1) {
+  const moteGeometry = new THREE.SphereGeometry(0.04, 6, 6);
+  for (let i = 0; i < 14; i += 1) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 1.9 + Math.random() * 0.8;
     const mote = addMesh(portal, moteGeometry, new THREE.MeshBasicMaterial({ color: i % 2 ? "#8ff9ff" : "#c5a6ff" }), [Math.cos(angle) * radius, Math.sin(angle) * radius, Math.random() * 0.2]);
@@ -798,6 +1095,16 @@ function createFighterVisual(kind) {
     blinkingEyes.push({ eye, height: eye.scale.y });
     return eye;
   };
+  const scleraMat = material("#fffdf7", 0.16, 0.02);
+  const pupilMat = material("#121018", 0.14, 0.08);
+  const shineMat = new THREE.MeshBasicMaterial({ color: "#ffffff" });
+  const addRealisticEye = (x, y, z, radius = 0.085, irisColor = "#3d2a1c") => {
+    addMesh(body, new THREE.SphereGeometry(radius, 12, 10), scleraMat, [x, y, z], [1, 1.08, 0.72]);
+    const irisMat = material(irisColor, 0.2, 0.05);
+    addBlinkingEye(new THREE.SphereGeometry(radius * 0.68, 10, 8), irisMat, [x, y, z + radius * 0.42]);
+    addBlinkingEye(new THREE.SphereGeometry(radius * 0.44, 8, 8), pupilMat, [x, y, z + radius * 0.62]);
+    addMesh(body, new THREE.SphereGeometry(radius * 0.22, 6, 6), shineMat, [x + radius * 0.22, y + radius * 0.24, z + radius * 0.85]);
+  };
 
   if (kind === "bumble") {
     addMesh(body, new THREE.CapsuleGeometry(0.42, 0.63, 5, 12), mainMat, [0, 1.05, 0]);
@@ -855,23 +1162,97 @@ function createFighterVisual(kind) {
     }
     addMesh(body, new THREE.BoxGeometry(0.34, 0.035, 0.025), darkMat, [0, 1.55, 0.48]);
   } else if (kind === "dinosaur") {
-    addMesh(body, new THREE.CapsuleGeometry(0.58, 0.72, 5, 12), mainMat, [0, 1.05, 0], [1.18, 1.05, 1.15]);
-    addMesh(body, new THREE.SphereGeometry(0.49, 16, 13), mainMat, [0, 1.9, 0.14], [1, 0.91, 1.02]);
-    addMesh(body, new THREE.SphereGeometry(0.37, 14, 10), trimMat, [0, 1.62, 0.51], [1.15, 0.55, 0.86]);
-    addMesh(body, new THREE.BoxGeometry(0.34, 0.06, 0.16), darkMat, [0, 1.52, 0.81]);
+    const scaryEyeMat = material("#ff3b30", 0.22, 0.1, { emissive: "#ff3b30", emissiveIntensity: 0.75 });
+    const fangMat = material("#f7f5e8", 0.2);
+    const scaleMat = material("#1d5927", 0.38, 0.16);
+    const bellyMat = material("#6ea84f", 0.48, 0.06);
+    addMesh(body, new THREE.CapsuleGeometry(0.56, 0.72, 6, 14), mainMat, [0, 1.06, 0], [1.18, 1.04, 1.14]);
+    addMesh(body, new THREE.CapsuleGeometry(0.38, 0.52, 5, 12), bellyMat, [0, 1.02, 0.24], [1.05, 0.96, 0.65]);
+    addMesh(body, new THREE.CylinderGeometry(0.28, 0.36, 0.26, 12), mainMat, [0, 1.56, 0.05]);
+    addMesh(body, new THREE.SphereGeometry(0.49, 20, 16), mainMat, [0, 1.9, 0.14], [1, 0.91, 1.04]);
+    addMesh(body, new THREE.SphereGeometry(0.37, 16, 12), trimMat, [0, 1.62, 0.51], [1.15, 0.55, 0.88]);
+    addMesh(body, new THREE.BoxGeometry(0.38, 0.08, 0.18), darkMat, [0, 1.5, 0.81]);
+    for (const fangX of [-0.14, 0, 0.14]) {
+      const fang = addMesh(body, new THREE.ConeGeometry(0.045, 0.15, 6), fangMat, [fangX, 1.46, 0.85]);
+      fang.rotation.x = Math.PI;
+    }
+    for (const [sx, sy, sz] of [[-0.36, 1.38, 0.34], [0.36, 1.38, 0.34], [-0.42, 1.02, 0.28], [0.42, 1.02, 0.28], [0, 1.18, 0.52], [-0.28, 1.24, -0.38], [0.28, 1.24, -0.38], [-0.18, 0.9, -0.52], [0.18, 0.9, -0.52]]) {
+      addMesh(body, new THREE.OctahedronGeometry(0.16, 0), scaleMat, [sx, sy, sz], [1.1, 0.75, 0.55]);
+    }
     for (const side of [-1, 1]) {
-      addMesh(body, new THREE.SphereGeometry(0.09, 10, 8), trimMat, [side * 0.23, 1.99, 0.48]);
-      addBlinkingEye(new THREE.SphereGeometry(0.04, 8, 8), darkMat, [side * 0.23, 1.99, 0.53]);
+      const brow = addMesh(body, new THREE.BoxGeometry(0.19, 0.06, 0.13), darkMat, [side * 0.22, 2.09, 0.49]);
+      brow.rotation.z = side * -0.28;
+      addMesh(body, new THREE.SphereGeometry(0.1, 12, 10), scaryEyeMat, [side * 0.23, 1.99, 0.48]);
+      addBlinkingEye(new THREE.BoxGeometry(0.03, 0.1, 0.04), darkMat, [side * 0.23, 1.99, 0.56]);
+      addMesh(body, new THREE.SphereGeometry(0.19, 12, 10), mainMat, [side * 0.58, 1.44, 0.02]);
       animatedLimbs.push(createLimb(body, palette, side * 0.61, 1.17, 0.02, 0.42, 0.18, side * -0.18));
       animatedLimbs.push(createLimb(body, palette, side * 0.29, 0.43, 0.02, 0.4, 0.2, side * 0.04));
-      addMesh(body, new THREE.SphereGeometry(0.24, 12, 9), darkMat, [side * 0.31, 0.13, 0.18], [1.4, 0.58, 1.45]);
+      addMesh(body, new THREE.SphereGeometry(0.24, 14, 10), darkMat, [side * 0.31, 0.13, 0.18], [1.4, 0.58, 1.45]);
     }
-    const tail = addMesh(body, new THREE.ConeGeometry(0.34, 1.12, 8), mainMat, [0, 1, -0.95]);
+    const tail = addMesh(body, new THREE.ConeGeometry(0.34, 1.18, 10), mainMat, [0, 1, -0.96]);
     tail.rotation.x = -Math.PI / 2;
     for (const z of [-0.48, -0.08, 0.32]) {
-      const spike = addMesh(body, new THREE.ConeGeometry(0.17, 0.4, 5), trimMat, [0, 1.92, z]);
+      const spike = addMesh(body, new THREE.ConeGeometry(0.17, 0.44, 6), trimMat, [0, 1.94, z]);
       spike.rotation.z = Math.PI;
     }
+  } else if (kind === "monkey") {
+    addMesh(body, new THREE.CapsuleGeometry(0.39, 0.56, 6, 14), mainMat, [0, 1.02, 0], [1.04, 1, 0.9]);
+    addMesh(body, new THREE.CapsuleGeometry(0.26, 0.42, 5, 12), trimMat, [0, 1.02, 0.18], [1, 0.96, 0.52]);
+    addMesh(body, new THREE.CylinderGeometry(0.16, 0.2, 0.22, 10), mainMat, [0, 1.48, 0.01]);
+    addMesh(body, new THREE.SphereGeometry(0.41, 20, 16), mainMat, [0, 1.88, 0.02]);
+    addMesh(body, new THREE.SphereGeometry(0.31, 16, 12), trimMat, [0, 1.78, 0.32], [1.06, 0.78, 0.56]);
+    addMesh(body, new THREE.SphereGeometry(0.12, 10, 8), trimMat, [0, 1.86, 0.48], [1.2, 0.75, 0.65]);
+    addMesh(body, new THREE.BoxGeometry(0.2, 0.03, 0.04), darkMat, [0, 1.66, 0.48]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.SphereGeometry(0.03, 8, 6), darkMat, [side * 0.045, 1.87, 0.55]);
+      addMesh(body, new THREE.SphereGeometry(0.18, 12, 10), mainMat, [side * 0.45, 1.9, 0], [0.65, 1, 0.45]);
+      addMesh(body, new THREE.SphereGeometry(0.11, 10, 8), trimMat, [side * 0.45, 1.9, 0.04], [0.65, 1, 0.45]);
+      addRealisticEye(side * 0.14, 1.96, 0.37, 0.09, "#5c3818");
+      addMesh(body, new THREE.SphereGeometry(0.15, 10, 8), mainMat, [side * 0.47, 1.38, 0]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.52, 1.14, 0, 0.48, 0.13, side * -0.16));
+      addMesh(body, new THREE.SphereGeometry(0.14, 12, 10), trimMat, [side * 0.6, 0.78, 0.04]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.21, 0.39, 0, 0.34, 0.14, side * 0.05));
+      addMesh(body, new THREE.SphereGeometry(0.17, 12, 10), trimMat, [side * 0.22, 0.12, 0.1], [1.25, 0.58, 1.3]);
+    }
+    const monkeyTail = addMesh(body, new THREE.TorusGeometry(0.42, 0.055, 8, 22, Math.PI * 1.3), mainMat, [0, 1.05, -0.45]);
+    monkeyTail.rotation.y = Math.PI / 2;
+    monkeyTail.rotation.z = -0.35;
+  } else if (kind === "lizard") {
+    const shortsMat = material("#e03434", 0.45, 0.08);
+    const shadesMat = material("#0d0e14", 0.14, 0.65);
+    const scaleMat = material("#1b5e2b", 0.36, 0.16);
+    const bellyMat = material("#5ec468", 0.45, 0.06);
+    const clawMat = material("#1e241f", 0.5, 0.12);
+    // Shirtless green lizard torso (no T-shirt) with realistic musculature & scales
+    addMesh(body, new THREE.CapsuleGeometry(0.42, 0.58, 6, 14), mainMat, [0, 1.18, 0], [1.08, 1, 0.86]);
+    addMesh(body, new THREE.CapsuleGeometry(0.28, 0.42, 5, 12), bellyMat, [0, 1.14, 0.16], [1.04, 0.94, 0.54]);
+    addMesh(body, new THREE.CylinderGeometry(0.18, 0.22, 0.22, 10), mainMat, [0, 1.56, 0.02]);
+    // Lizard scales on chest & back
+    for (const [sx, sy, sz] of [[-0.25, 1.38, 0.3], [0.25, 1.38, 0.3], [0, 1.2, 0.38], [-0.22, 1.35, -0.3], [0.22, 1.35, -0.3], [0, 1.05, -0.34]]) {
+      addMesh(body, new THREE.OctahedronGeometry(0.11, 0), scaleMat, [sx, sy, sz], [1.1, 0.75, 0.5]);
+    }
+    // Red shorts around waist and upper thighs
+    addMesh(body, new THREE.CylinderGeometry(0.45, 0.43, 0.38, 16), shortsMat, [0, 0.76, 0]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.CylinderGeometry(0.18, 0.17, 0.32, 14), shortsMat, [side * 0.22, 0.56, 0]);
+      addMesh(body, new THREE.SphereGeometry(0.16, 10, 8), mainMat, [side * 0.5, 1.42, 0]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.56, 1.16, 0, 0.46, 0.13, side * -0.14));
+      addMesh(body, new THREE.SphereGeometry(0.14, 12, 10), mainMat, [side * 0.62, 0.8, 0.04]);
+      animatedLimbs.push(createLimb(body, palette, side * 0.22, 0.38, 0, 0.34, 0.14, side * 0.04));
+      addMesh(body, new THREE.BoxGeometry(0.28, 0.15, 0.42), clawMat, [side * 0.22, 0.1, 0.09]);
+      // Black sunglasses lenses & side temples
+      addMesh(body, new THREE.BoxGeometry(0.21, 0.13, 0.07), shadesMat, [side * 0.15, 1.96, 0.42]);
+      addMesh(body, new THREE.BoxGeometry(0.04, 0.04, 0.34), shadesMat, [side * 0.32, 1.98, 0.24]);
+    }
+    // Lizard head, snout, nostrils, sunglasses bridge, and tail
+    addMesh(body, new THREE.SphereGeometry(0.39, 20, 16), mainMat, [0, 1.92, 0.04]);
+    addMesh(body, new THREE.SphereGeometry(0.29, 16, 12), mainMat, [0, 1.82, 0.38], [1.05, 0.62, 1.05]);
+    for (const side of [-1, 1]) {
+      addMesh(body, new THREE.SphereGeometry(0.025, 6, 6), scaleMat, [side * 0.09, 1.88, 0.64]);
+    }
+    addMesh(body, new THREE.BoxGeometry(0.58, 0.04, 0.06), shadesMat, [0, 1.98, 0.42]);
+    const lizardTail = addMesh(body, new THREE.ConeGeometry(0.22, 1.08, 10), mainMat, [0, 0.86, -0.78]);
+    lizardTail.rotation.x = -Math.PI / 2;
   } else if (kind === "entity") {
     addMesh(body, new THREE.CapsuleGeometry(0.23, 1.1, 5, 10), mainMat, [0, 1.52, 0], [1, 1.05, 0.82]);
     addMesh(body, new THREE.SphereGeometry(0.34, 16, 12), mainMat, [0, 2.45, 0.02], [0.9, 1.08, 0.82]);
@@ -908,12 +1289,21 @@ function createFighterVisual(kind) {
     }
     addMesh(body, new THREE.TorusGeometry(0.24, 0.055, 8, 20), trimMat, [0, 1.12, 0.39]);
     if (kind === "nova") {
+      const creamFurMat = material("#fff6e8", 0.35, 0.04);
+      addMesh(body, new THREE.SphereGeometry(0.28, 16, 12), creamFurMat, [0, 1.18, 0.28], [1.1, 0.88, 0.52]);
+      addMesh(body, new THREE.SphereGeometry(0.25, 16, 12), creamFurMat, [0, 1.76, 0.34], [1.08, 0.62, 0.56]);
+      addMesh(body, new THREE.SphereGeometry(0.055, 8, 8), pupilMat, [0, 1.82, 0.48]);
       for (const side of [-1, 1]) {
-        const ear = addMesh(body, new THREE.ConeGeometry(0.18, 0.62, 6), trimMat, [side * 0.24, 2.45, 0]);
+        const ear = addMesh(body, new THREE.ConeGeometry(0.19, 0.64, 8), mainMat, [side * 0.25, 2.45, 0]);
         ear.rotation.z = side * -0.22;
+        const innerEar = addMesh(body, new THREE.ConeGeometry(0.11, 0.42, 6), creamFurMat, [side * 0.25, 2.43, 0.05]);
+        innerEar.rotation.z = side * -0.22;
+        addRealisticEye(side * 0.16, 1.97, 0.34, 0.135, "#ff8c29");
       }
-      const tail = addMesh(body, new THREE.ConeGeometry(0.22, 0.78, 8), mainMat, [0, 0.94, -0.62]);
+      const tail = addMesh(body, new THREE.ConeGeometry(0.25, 0.88, 10), mainMat, [0, 0.94, -0.62]);
       tail.rotation.x = Math.PI / 2;
+      const tailTip = addMesh(body, new THREE.ConeGeometry(0.14, 0.32, 8), creamFurMat, [0, 0.94, -1.04]);
+      tailTip.rotation.x = Math.PI / 2;
     } else if (kind === "titan") {
       for (const side of [-1, 1]) {
         const horn = addMesh(body, new THREE.ConeGeometry(0.2, 0.58, 6), trimMat, [side * 0.39, 2.15, -0.08]);
@@ -935,9 +1325,6 @@ function createFighterVisual(kind) {
   if (kind === "entity") root.scale.setScalar(1.4);
   root.userData.baseScale = root.scale.clone();
 
-  root.traverse((child) => {
-    if (child.isMesh) child.castShadow = true;
-  });
   root.userData.body = body;
   root.userData.kind = kind;
   root.userData.animatedLimbs = animatedLimbs;
@@ -1055,7 +1442,7 @@ function makeFighter(kind, index) {
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
-    attackPose: 0, hitFlash: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
+    attackPose: 0, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, speechBubble: null, speechTimer: 0
   };
 }
@@ -1185,7 +1572,9 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     glitch: "Victory.exe!",
     tide: "Ride the wave!",
     frog: "Ready to hop!",
-    dinosaur: "Raaawr!"
+    dinosaur: "Raaawr!",
+    monkey: "Ooh ooh aah!",
+    lizard: "Stay cool!"
   };
   fighters.forEach((fighter) => createSpeechBubble(fighter, openingLines[fighter.kind]));
   const portalEntryDuration = 1.05;
@@ -1221,6 +1610,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   updateHud();
   document.querySelector("#screen-reader-status").textContent =
     `The portal opens. ${fighters.map((fighter) => `${characters[fighter.kind].name} enters the arena`).join(". ")}.`;
+  setMusicScene("battle", fighters[1]?.kind || null);
   renderer.domElement.focus();
 }
 
@@ -1268,6 +1658,7 @@ function showSelection() {
   document.querySelector("#select-screen").hidden = false;
   clearFighters();
   updateFighterPreview(selectedFighter);
+  setMusicScene("select");
 }
 
 function showPortal() {
@@ -1284,6 +1675,7 @@ function showPortal() {
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = false;
   clearFighters();
+  setMusicScene("title");
 }
 
 function finishMatch(winnerIndex, reason) {
@@ -1332,28 +1724,39 @@ function launchProjectile(fighter, options = {}) {
     force = 4.2,
     vz = 0,
     offsetZ = 0,
-    shape = "sphere"
+    shape = "sphere",
+    hazard = false
   } = options;
   const geometry = shape === "star"
     ? new THREE.OctahedronGeometry(radius, 1)
     : shape === "wave"
       ? new THREE.TorusGeometry(radius * 1.2, radius * 0.24, 8, 24)
-      : new THREE.SphereGeometry(radius, 16, 12);
+      : shape === "banana"
+        ? new THREE.TorusGeometry(radius * 1.05, radius * 0.32, 8, 16, Math.PI * 1.15)
+        : new THREE.SphereGeometry(radius, 16, 12);
+  const startY = hazard ? fighter.y + 0.85 : fighter.y + 1.35;
   const projectile = addMesh(arena, geometry, new THREE.MeshStandardMaterial({
-    color, emissive, emissiveIntensity: 2.3, roughness: 0.2
-  }), [fighter.x + fighter.facing * 0.8, fighter.y + 1.35, fighter.z + offsetZ]);
-  const halo = addMesh(projectile, new THREE.TorusGeometry(radius * 1.45, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color }), [0, 0, 0]);
-  halo.rotation.x = Math.PI / 2;
+    color, emissive, emissiveIntensity: hazard ? 0.55 : 2.3, roughness: 0.2
+  }), [fighter.x + fighter.facing * 0.8, startY, fighter.z + offsetZ]);
+  if (!hazard) {
+    const halo = addMesh(projectile, new THREE.TorusGeometry(radius * 1.45, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color }), [0, 0, 0]);
+    halo.rotation.x = Math.PI / 2;
+  } else {
+    projectile.rotation.x = Math.PI / 2;
+  }
   projectile.userData.spin = 4;
   projectiles.push({
     mesh: projectile,
     owner: fighter,
     vx: fighter.facing * speed,
+    vy: hazard ? 4.2 : 0,
     vz,
     life,
     damage,
     force,
     hitRadius: radius + 0.55,
+    hazard,
+    armTimer: hazard ? 0.45 : 0,
     power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
   });
 }
@@ -1523,6 +1926,19 @@ function useSpecialAbility(fighter) {
     }
     case "fire":
       spawnFireBreath(fighter);
+      break;
+    case "banana":
+      launchProjectile(fighter, {
+        shape: "banana",
+        color: "#ffe135",
+        emissive: "#b89600",
+        radius: 0.34,
+        speed: 6.4,
+        life: 7,
+        damage: 6,
+        force: 4.5,
+        hazard: true
+      });
       break;
     case "void":
       applyAreaAbility(fighter, { radius: 4.6, damage: 13, force: 5.6, color: "#b774ff", pull: true });
@@ -1747,6 +2163,8 @@ function respawn(fighter, index) {
       finishMatch(remaining[0].fighterIndex, "Last fighter standing.");
     } else {
       document.querySelector("#battle-status").textContent = `${characters[fighter.kind].name} is out!`;
+      const nextRival = fighters.find((item, fighterIndex) => fighterIndex > 0 && !item.eliminated);
+      if (nextRival) setMusicScene("battle", nextRival.kind);
     }
     updateHud();
     return;
@@ -1838,6 +2256,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
   fighter.hitFlash = Math.max(0, fighter.hitFlash - delta);
+  fighter.slipTimer = Math.max(0, fighter.slipTimer - delta);
   fighter.powerBoost = Math.max(0, fighter.powerBoost - delta);
   if (fighter.respawn > 0) {
     fighter.respawn -= delta;
@@ -1884,7 +2303,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  readInput(fighter, index, delta);
+  if (fighter.slipTimer <= 0) readInput(fighter, index, delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -1952,10 +2371,15 @@ function updateFighter(fighter, index, delta, elapsed) {
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
   const idleBreath = Math.sin(elapsed * 2.6 + fighter.cpuThinkTime) * 0.025 * (1 - movement);
   body.position.y = fighter.grounded ? Math.abs(Math.sin(elapsed * 12)) * 0.065 * movement + idleBreath : 0;
-  body.rotation.z = swing * -fighter.facing * 0.22 - fighter.vx * 0.012;
-  body.rotation.x = fighter.grounded
-    ? Math.sin(elapsed * 2.1 + fighter.cpuThinkTime) * 0.025 * (1 - movement)
-    : -0.1;
+  if (fighter.slipTimer > 0) {
+    body.rotation.z = fighter.facing * 1.15;
+    body.rotation.x = -0.55;
+  } else {
+    body.rotation.z = swing * -fighter.facing * 0.22 - fighter.vx * 0.012;
+    body.rotation.x = fighter.grounded
+      ? Math.sin(elapsed * 2.1 + fighter.cpuThinkTime) * 0.025 * (1 - movement)
+      : -0.1;
+  }
   fighter.visual.userData.animatedLimbs.forEach((limb, limbIndex) => {
     const gaitPhase = (limb.userData.side < 0 ? 0 : Math.PI) + (limb.userData.limbType === "arm" ? Math.PI : 0);
     limb.rotation.z = limb.userData.restRotationZ
@@ -1972,18 +2396,58 @@ function updateProjectiles(delta) {
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const projectile = projectiles[i];
     projectile.life -= delta;
-    projectile.mesh.position.x += projectile.vx * delta;
-    projectile.mesh.position.z += projectile.vz * delta;
-    projectile.mesh.rotation.y += delta * 4;
-    for (const target of fighters) {
-      if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
-      const dx = projectile.mesh.position.x - target.x;
-      const dy = projectile.mesh.position.y - (target.y + 1.3);
-      const dz = projectile.mesh.position.z - target.z;
-      if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
-        hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
-        projectile.life = 0;
-        break;
+    if (projectile.hazard) {
+      projectile.armTimer = Math.max(0, projectile.armTimer - delta);
+      if (projectile.mesh.position.y > 0.16) {
+        projectile.vy -= 18 * delta;
+        projectile.mesh.position.x += projectile.vx * delta;
+        projectile.mesh.position.y = Math.max(0.16, projectile.mesh.position.y + projectile.vy * delta);
+        projectile.mesh.position.z += projectile.vz * delta;
+      } else {
+        projectile.vx *= Math.exp(-8 * delta);
+        projectile.mesh.position.x += projectile.vx * delta;
+      }
+      projectile.mesh.rotation.z += delta * 2.2;
+      for (const target of fighters) {
+        if (target.eliminated || target.respawn > 0) continue;
+        if (target === projectile.owner && projectile.armTimer > 0) continue;
+        const dx = projectile.mesh.position.x - target.x;
+        const dy = projectile.mesh.position.y - (target.y + 0.3);
+        const dz = projectile.mesh.position.z - target.z;
+        if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
+          target.slipTimer = 0.85;
+          target.vy = 5.4;
+          target.grounded = false;
+          target.vx = (Math.abs(target.vx) > 0.5 ? Math.sign(target.vx) : target.facing) * 3.8;
+          if (target === projectile.owner) {
+            target.damage += 4;
+            target.hp = Math.max(0, target.hp - 4);
+            target.hitFlash = 0.25;
+            hudDirty = true;
+            spawnImpact(target, false);
+            document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on his own banana peel!`;
+          } else {
+            hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
+            document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on a banana peel!`;
+          }
+          projectile.life = 0;
+          break;
+        }
+      }
+    } else {
+      projectile.mesh.position.x += projectile.vx * delta;
+      projectile.mesh.position.z += projectile.vz * delta;
+      projectile.mesh.rotation.y += delta * 4;
+      for (const target of fighters) {
+        if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
+        const dx = projectile.mesh.position.x - target.x;
+        const dy = projectile.mesh.position.y - (target.y + 1.3);
+        const dz = projectile.mesh.position.z - target.z;
+        if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
+          hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
+          projectile.life = 0;
+          break;
+        }
       }
     }
     if (projectile.life <= 0 || Math.abs(projectile.mesh.position.x) > 12) {
@@ -2074,7 +2538,7 @@ function animatePortal(elapsed, delta) {
       planet.rotation.z = Math.sin(elapsed * 0.12 + phase) * 0.035;
       planet.children.forEach((part) => {
         if (part.userData.spin) part.rotation.y += delta * part.userData.spin;
-        if (part.userData.orbitSpeed) part.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta * part.userData.orbitSpeed);
+        if (part.userData.orbitSpeed) part.position.applyAxisAngle(yAxis, delta * part.userData.orbitSpeed);
       });
     });
   }
@@ -2085,7 +2549,7 @@ function animatePortal(elapsed, delta) {
       planet.group.position.y = planet.y + Math.sin(elapsed * planet.drift + planet.phase) * 0.42;
       planet.surface.rotation.y += delta * planet.spin;
       planet.ring.rotation.z += delta * planet.spin * 0.35;
-      planet.moon.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), delta * planet.orbitSpeed * 1.8);
+      planet.moon.position.applyAxisAngle(yAxis, delta * planet.orbitSpeed * 1.8);
     });
   }
   portalRings.forEach((item, index) => {
@@ -2179,10 +2643,13 @@ createStars();
 createArena(arenaIndex);
 updateArenaLabel();
 document.querySelector('[data-fighter="entity"]').hidden = !entityUnlocked;
-document.querySelector("#fighter-count").textContent = entityUnlocked ? "09 FIGHTERS" : "08 FIGHTERS";
+document.querySelector("#fighter-count").textContent = entityUnlocked ? "11 FIGHTERS" : "10 FIGHTERS";
 updateControlsHint();
 
-document.querySelector("#enter-portal").addEventListener("click", showSelection);
+document.querySelector("#enter-portal").addEventListener("click", () => {
+  showSelection();
+  startMusic().catch(handleMusicError);
+});
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
 document.querySelector("#start-match").addEventListener("click", () => startMatch());
 document.querySelector("#leave-battle").addEventListener("click", showSelection);

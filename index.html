@@ -20,6 +20,17 @@
       </div>
     </section>
     <main class="game-ui">
+      <div class="music-controls">
+        <button class="music-toggle" id="toggle-music" type="button" aria-pressed="true" aria-label="Mute music">
+          <span aria-hidden="true">♫</span>
+          <span id="music-toggle-label">Music: On</span>
+        </button>
+        <button class="music-track-button" id="next-track" type="button" aria-label="Switch to next music track">
+          <span id="music-track-label">Track 1/30 · Starlight Pulse</span>
+          <span aria-hidden="true">⏭</span>
+        </button>
+      </div>
+      <p class="sr-only" id="music-status" role="status" aria-live="polite"></p>
       <div class="ko-flash" id="knockout-flash" hidden aria-live="polite" aria-atomic="true">
         <span>K.O.</span>
         <small id="knockout-name"></small>
@@ -34,7 +45,7 @@
           <p class="fullscreen-notice" id="fullscreen-notice" role="status" hidden></p>
           <p class="storage-notice" id="storage-notice" role="status" hidden>Saved unlocks are unavailable in this embedded game, but gameplay is unaffected.</p>
         </div>
-        <span class="sr-only" id="fighter-count">08 FIGHTERS</span>
+        <span class="sr-only" id="fighter-count">10 FIGHTERS</span>
       </section>
 
       <section class="screen select-screen" id="select-screen" aria-labelledby="select-title" hidden>
@@ -91,7 +102,17 @@
           </button>
           <button class="fighter-card" type="button" data-fighter="dinosaur" aria-pressed="false">
             <span class="fighter-art dinosaur-art" aria-hidden="true"><i></i></span>
-            <span class="fighter-card-copy"><span class="fighter-type">THE ANCIENT RUMBLER</span><strong>Rex Rumble</strong><small>Sturdy • Mighty • Fearless</small><small class="ability-note">Special: Fire Breath</small></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE ANCIENT RUMBLER</span><strong>Rex Rumble</strong><small>Green • Scaly • Mighty</small><small class="ability-note">Special: Fire Breath</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="monkey" aria-pressed="false">
+            <span class="fighter-art monkey-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE BANANA BRAWLER</span><strong>Monkeyman</strong><small>Quick • Cheeky • Agile</small><small class="ability-note">Special: Banana Peel</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="lizard" aria-pressed="false">
+            <span class="fighter-art lizard-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE SHADES REPTILE</span><strong>Surface Lizard</strong><small>Green • Red Shorts • Sunglasses</small><small class="ability-note">Special: Tongue Lash</small></span>
             <span class="pick-indicator" aria-hidden="true">✓</span>
           </button>
           <button class="fighter-card entity-card" type="button" data-fighter="entity" aria-pressed="false" hidden>
