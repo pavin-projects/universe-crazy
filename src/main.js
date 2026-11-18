@@ -10,18 +10,31 @@ const cutsceneOverlay = document.querySelector("#cutscene-overlay");
 const cutsceneEyebrow = document.querySelector("#cutscene-eyebrow");
 const cutsceneTitle = document.querySelector("#cutscene-title");
 const cutsceneSubtitle = document.querySelector("#cutscene-subtitle");
+const cutsceneBubbles = document.querySelector("#cutscene-bubbles");
 let cutsceneTimer = 0;
+let cutsceneFocusFighter = null;
+let cutsceneZoomTimer = 0;
 
-function playCutscene(eyebrow, title, subtitle, duration = 2.1) {
+function playCutscene(eyebrow, title, subtitle, duration = 2.4, bubbles = []) {
   cutsceneEyebrow.textContent = eyebrow;
   cutsceneTitle.textContent = title;
   cutsceneSubtitle.textContent = subtitle;
+  cutsceneBubbles.replaceChildren();
+  bubbles.forEach(({ name, line, color }) => {
+    const pill = document.createElement("span");
+    pill.className = "cutscene-bubble-pill";
+    if (color) pill.style.borderColor = color;
+    pill.textContent = `${name}: "${line}"`;
+    cutsceneBubbles.append(pill);
+  });
   cutsceneOverlay.hidden = false;
   cutsceneTimer = duration;
 }
 
 function endCutscene() {
   cutsceneTimer = 0;
+  cutsceneFocusFighter = null;
+  cutsceneZoomTimer = 0;
   cutsceneOverlay.hidden = true;
 }
 
@@ -2321,38 +2334,44 @@ function createSpeechBubble(fighter, text) {
     fighter.speechBubble.geometry.dispose();
   }
   const bubbleCanvas = document.createElement("canvas");
-  bubbleCanvas.width = 512;
-  bubbleCanvas.height = 160;
+  bubbleCanvas.width = 560;
+  bubbleCanvas.height = 176;
   const context = bubbleCanvas.getContext("2d");
   if (!context) throw new Error("Could not draw a fighter speech bubble.");
-  context.fillStyle = "#f8f6ff";
-  context.strokeStyle = characters[fighter.kind].palette.trim;
-  context.lineWidth = 7;
+  context.fillStyle = "#fffdf7";
+  context.strokeStyle = "#17152b";
+  context.lineWidth = 10;
   context.beginPath();
-  context.roundRect(12, 10, 488, 120, 34);
+  context.roundRect(14, 10, 532, 126, 36);
   context.fill();
   context.stroke();
+  context.strokeStyle = characters[fighter.kind].palette.trim;
+  context.lineWidth = 5;
+  context.stroke();
+  context.fillStyle = "#fffdf7";
   context.beginPath();
-  context.moveTo(382, 120);
-  context.lineTo(410, 155);
-  context.lineTo(440, 120);
+  context.moveTo(250, 132);
+  context.lineTo(280, 170);
+  context.lineTo(310, 132);
   context.closePath();
   context.fill();
+  context.strokeStyle = "#17152b";
+  context.lineWidth = 6;
   context.stroke();
-  context.fillStyle = "#17152b";
-  context.font = "700 36px Segoe UI, sans-serif";
+  context.fillStyle = "#141126";
+  context.font = "800 38px Segoe UI, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(text, 256, 70, 430);
+  context.fillText(text, 280, 73, 475);
   const texture = new THREE.CanvasTexture(bubbleCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  bubble.scale.set(2.7, 0.84, 1);
-  bubble.position.set(0, 3.1, 0);
-  bubble.renderOrder = 10;
+  bubble.scale.set(3.5, 1.1, 1);
+  bubble.position.set(0, 3.25, 0);
+  bubble.renderOrder = 15;
   fighter.visual.add(bubble);
   fighter.speechBubble = bubble;
-  fighter.speechTimer = 3.4;
+  fighter.speechTimer = 4.8;
 }
 
 function updateSpeechBubble(fighter, delta, elapsed) {
@@ -2366,8 +2385,11 @@ function updateSpeechBubble(fighter, delta, elapsed) {
     fighter.speechBubble = null;
     return;
   }
-  fighter.speechBubble.position.y = 3.1 + Math.sin(elapsed * 3 + fighter.cpuThinkTime) * 0.07;
-  fighter.speechBubble.material.opacity = Math.min(1, fighter.speechTimer / 0.35);
+  const scaleX = Math.max(0.2, fighter.visual.scale.x || 1);
+  const scaleY = Math.max(0.2, fighter.visual.scale.y || 1);
+  fighter.speechBubble.scale.set(3.5 / scaleX, 1.1 / scaleY, 1);
+  fighter.speechBubble.position.y = (3.15 + Math.sin(elapsed * 3 + fighter.cpuThinkTime) * 0.08) / scaleY;
+  fighter.speechBubble.material.opacity = Math.min(1, fighter.speechTimer / 0.4);
 }
 
 function updateFighterPreview(kind) {
@@ -2414,7 +2436,7 @@ function makeFighter(kind, index) {
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
-    attackPose: 0, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
+    attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, speechBubble: null, speechTimer: 0
   };
 }
@@ -2550,19 +2572,26 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     monkey: "Ooh ooh aah!",
     lizard: "Stay cool!"
   };
-  fighters.forEach((fighter) => createSpeechBubble(fighter, openingLines[fighter.kind] || characters[fighter.kind].openingLine || "Let's fight!"));
-  const portalEntryDuration = 1.05;
-  fighters.forEach((fighter) => {
+  const entryBubbles = fighters.map((fighter) => {
+    const line = openingLines[fighter.kind] || characters[fighter.kind].openingLine || "Let's fight!";
+    createSpeechBubble(fighter, line);
+    return { name: characters[fighter.kind].name, line, color: characters[fighter.kind].palette.trim };
+  });
+  const portalEntryDuration = 1.45;
+  fighters.forEach((fighter, index) => {
+    fighter.portalDelay = index * 0.42;
     fighter.portalEntry = portalEntryDuration;
     fighter.portalEntryDuration = portalEntryDuration;
     fighter.portalEntryTarget = { x: fighter.x, z: fighter.z };
     fighter.x = 0;
-    fighter.y = 2.85;
+    fighter.y = 8.4;
     fighter.z = -5.15;
     fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
     fighter.visual.rotation.set(0, 0, 0);
-    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.18);
+    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.24);
   });
+  camera.position.set(0, 7.2, 10.5);
+  camera.lookAt(0, 3.6, -4.2);
   portalIntroActive = true;
   matchTime = 180;
   displayedSecond = -1;
@@ -2587,10 +2616,11 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   const rivalNames = fighters.slice(1).map((fighter) => characters[fighter.kind].name).join(" • ");
   const arenaTitle = hiddenRealmActive ? secretTheme.name : arenaThemes[Math.floor(arenaIndex / 20) % arenaThemes.length].name;
   playCutscene(
-    secretChallengeActive ? "SECRET BOSS CUTSCENE" : "PORTAL CUTSCENE",
+    secretChallengeActive ? "SECRET BOSS CUTSCENE" : "COURT ENTRY CUTSCENE",
     secretChallengeActive ? "ENTITY.EXE AWAKENS" : `ENTERING ${arenaTitle.toUpperCase()}`,
     secretChallengeActive ? "Defeat Entity.exe in The Null Abyss to unlock the secret skin!" : `${characters[fighters[0].kind].name} vs. ${rivalNames}`,
-    secretChallengeActive ? 2.6 : 1.9
+    secretChallengeActive ? 3.2 : 3.2,
+    entryBubbles
   );
   setMusicScene("battle", fighters[1]?.kind || null);
   renderer.domElement.focus();
@@ -2835,6 +2865,10 @@ function spawnFireBreath(fighter) {
 function useSpecialAbility(fighter) {
   const character = characters[fighter.kind];
   document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
+  createSpeechBubble(fighter, `${character.specialName}!`);
+  fighter.poseTimer = 0.72;
+  cutsceneFocusFighter = fighter;
+  cutsceneZoomTimer = 0.68;
   const boost = fighter.powerBoost > 0 ? 1.7 : 1;
 
   switch (character.special) {
@@ -3111,6 +3145,7 @@ function attack(fighter, target, special = false) {
 
   fighter.cooldown = 0.42;
   fighter.attackPose = 0.34;
+  fighter.kickPose = 0.36;
 
   if (!target) {
     const reach = 2.15;
@@ -3131,7 +3166,7 @@ function attack(fighter, target, special = false) {
   const inFront = dx * fighter.facing > -0.65;
   if (inReach && Math.abs(dz) < 1.75 && inFront) {
     const boost = fighter.powerBoost > 0 ? 1.7 : 1;
-    hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 3.8);
+    hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 4.4);
   }
   tryActivateSecretSeal(fighter);
 }
@@ -3242,9 +3277,11 @@ function readInput(fighter, index, delta) {
   if (Math.abs(fighter.vz) < 0.035) fighter.vz = 0;
 
   if (horizontal) fighter.facing = Math.sign(horizontal);
+  fighter.crouching = fighter.grounded && depth > 0.35 && Math.abs(horizontal) < 0.25;
   if (jump && fighter.grounded) {
     fighter.vy = 9.2;
     fighter.grounded = false;
+    fighter.crouching = false;
   }
   if (strike) attack(fighter);
   if (special) attack(fighter, null, true);
@@ -3257,6 +3294,8 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.specialCooldown = Math.max(0, fighter.specialCooldown - delta);
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
+  fighter.kickPose = Math.max(0, fighter.kickPose - delta);
+  fighter.poseTimer = Math.max(0, fighter.poseTimer - delta);
   fighter.hitFlash = Math.max(0, fighter.hitFlash - delta);
   fighter.slipTimer = Math.max(0, fighter.slipTimer - delta);
   fighter.powerBoost = Math.max(0, fighter.powerBoost - delta);
@@ -3283,24 +3322,32 @@ function updateFighter(fighter, index, delta, elapsed) {
   }
 
   if (fighter.portalEntry > 0) {
+    if (fighter.portalDelay > 0) {
+      fighter.portalDelay = Math.max(0, fighter.portalDelay - delta);
+      return;
+    }
     fighter.portalEntry = Math.max(0, fighter.portalEntry - delta);
     const progress = 1 - fighter.portalEntry / fighter.portalEntryDuration;
     const eased = 1 - (1 - progress) ** 3;
+    const skyDrop = (1 - progress) ** 2;
     const target = fighter.portalEntryTarget;
     fighter.x = target.x * eased;
-    fighter.y = THREE.MathUtils.lerp(2.85, 0.08, eased) + Math.sin(progress * Math.PI) * 0.48;
+    fighter.y = THREE.MathUtils.lerp(0.08, 8.4, skyDrop) + Math.sin(progress * Math.PI) * 1.1;
     fighter.z = THREE.MathUtils.lerp(-5.15, target.z, eased);
     fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
-    fighter.visual.rotation.y = (fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2) + (1 - eased) * Math.PI * 1.7;
-    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.18 + eased * 0.82);
+    fighter.visual.rotation.y = (fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2) + (1 - eased) * Math.PI * 2;
+    fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(0.24 + eased * 0.76);
     if (fighter.portalEntry === 0) {
       fighter.x = target.x;
       fighter.y = 0.08;
       fighter.z = target.z;
       fighter.grounded = true;
+      fighter.poseTimer = 0.65;
       fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
       fighter.visual.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
       fighter.visual.scale.copy(fighter.visual.userData.baseScale);
+      spawnAbilityRing(fighter, characters[fighter.kind].palette.trim, 0.42);
+      spawnImpact(fighter, true);
     }
     return;
   }
@@ -3371,25 +3418,36 @@ function updateFighter(fighter, index, delta, elapsed) {
   const body = fighter.visual.userData.body;
   const movement = Math.min(1, Math.hypot(fighter.vx, fighter.vz) / characters[fighter.kind].speed);
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
-  const idleBreath = Math.sin(elapsed * 2.6 + fighter.cpuThinkTime) * 0.025 * (1 - movement);
-  body.position.y = fighter.grounded ? Math.abs(Math.sin(elapsed * 12)) * 0.065 * movement + idleBreath : 0;
+  const kick = fighter.kickPose > 0 ? Math.sin((fighter.kickPose / 0.36) * Math.PI) : 0;
+  const pose = fighter.poseTimer > 0 ? Math.sin((fighter.poseTimer / 0.72) * Math.PI) : 0;
+  const crouchDrop = fighter.crouching ? -0.34 : 0;
+  const idleBreath = Math.sin(elapsed * 3.1 + fighter.cpuThinkTime) * 0.03 * (1 - movement);
+  body.position.y = (fighter.grounded ? Math.abs(Math.sin(elapsed * 12)) * 0.07 * movement + idleBreath : 0) + crouchDrop + pose * 0.14;
+  body.scale.set(fighter.crouching ? 1.08 : 1, fighter.crouching ? 0.78 : 1, fighter.crouching ? 1.06 : 1);
   if (fighter.slipTimer > 0) {
     body.rotation.z = fighter.facing * 1.15;
     body.rotation.x = -0.55;
   } else {
-    body.rotation.z = swing * -fighter.facing * 0.22 - fighter.vx * 0.012;
+    body.rotation.z = swing * -fighter.facing * 0.25 - fighter.vx * 0.015 + kick * fighter.facing * 0.16;
+    // Stalking forward lean when moving, ducking lean when crouching, heroic tilt during poses
     body.rotation.x = fighter.grounded
-      ? Math.sin(elapsed * 2.1 + fighter.cpuThinkTime) * 0.025 * (1 - movement)
-      : -0.1;
+      ? (fighter.crouching ? 0.28 : movement * 0.18 + Math.sin(elapsed * 2.2 + fighter.cpuThinkTime) * 0.03 * (1 - movement) - pose * 0.14)
+      : -0.14;
   }
   fighter.visual.userData.animatedLimbs.forEach((limb, limbIndex) => {
     const gaitPhase = (limb.userData.side < 0 ? 0 : Math.PI) + (limb.userData.limbType === "arm" ? Math.PI : 0);
+    const isFrontLeg = limb.userData.limbType === "leg" && limb.userData.side === fighter.facing;
+    const isArm = limb.userData.limbType === "arm";
+    const kickOffset = isFrontLeg ? kick * -fighter.facing * 1.18 : 0;
+    const poseOffset = isArm ? pose * -limb.userData.side * 0.95 : 0;
+    const crouchOffset = fighter.crouching && isArm ? -limb.userData.side * 0.45 : 0;
     limb.rotation.z = limb.userData.restRotationZ
-      + Math.sin(elapsed * 10 + gaitPhase) * 0.48 * movement
-      + Math.cos(elapsed * 18) * swing * -fighter.facing * 0.28;
+      + Math.sin(elapsed * 11 + gaitPhase) * 0.56 * movement
+      + Math.cos(elapsed * 18) * swing * -fighter.facing * 0.34
+      + kickOffset + poseOffset + crouchOffset;
   });
-  body.rotation.y = Math.sin(elapsed * 5 + fighter.cpuThinkTime) * 0.08 * movement
-    + swing * fighter.facing * 0.12;
+  body.rotation.y = Math.sin(elapsed * 5.5 + fighter.cpuThinkTime) * 0.1 * movement
+    + swing * fighter.facing * 0.18 + pose * fighter.facing * 0.22;
   animateBlink(fighter.visual, elapsed);
   fighter.visual.visible = fighter.invulnerable <= 0 || Math.floor(elapsed * 12) % 2 === 0;
 }
@@ -3507,6 +3565,32 @@ function updateClock(delta) {
 }
 
 function updateCamera(delta) {
+  const arenaCameraDistance = Math.max(24, floorRadius * 2.7);
+  if (portalIntroActive) {
+    // Zoom in on the fighter currently dropping from the sky or posing on the court
+    const activeActor = fighters.find((fighter) => fighter.portalDelay === 0 && fighter.portalEntry > 0)
+      || fighters.slice().reverse().find((fighter) => fighter.portalEntry === 0)
+      || fighters[0];
+    if (activeActor) {
+      const targetCamX = THREE.MathUtils.clamp(activeActor.x * 0.75, -5.5, 5.5);
+      const targetCamY = Math.max(3.6, activeActor.y + 2.8);
+      const targetCamZ = activeActor.z + 7.8;
+      camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCamX, 3.2, delta);
+      camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCamY, 3.2, delta);
+      camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 2.8, delta);
+      camera.lookAt(activeActor.x, activeActor.y + 1.35, activeActor.z);
+      return;
+    }
+  }
+  if (cutsceneZoomTimer > 0 && cutsceneFocusFighter && !cutsceneFocusFighter.eliminated) {
+    cutsceneZoomTimer = Math.max(0, cutsceneZoomTimer - delta);
+    const focus = cutsceneFocusFighter;
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, focus.x * 0.7, 4.5, delta);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, focus.y + 4.4, 4.5, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, focus.z + 10.2, 4.5, delta);
+    camera.lookAt(focus.x, focus.y + 1.35, focus.z);
+    return;
+  }
   const activeFighters = fighters.filter((fighter) => !fighter.eliminated);
   const centerX = activeFighters.length
     ? activeFighters.reduce((total, fighter) => total + fighter.x, 0) / activeFighters.length
@@ -3520,7 +3604,6 @@ function updateCamera(delta) {
   const targetX = THREE.MathUtils.clamp(centerX * 0.42, -4.5, 4.5);
   camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta) + (Math.random() - 0.5) * cameraShake;
   camera.position.y = THREE.MathUtils.damp(camera.position.y, 11.2, 2, delta) + (Math.random() - 0.5) * cameraShake;
-  const arenaCameraDistance = Math.max(24, floorRadius * 2.7);
   camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 1.5, delta);
   camera.lookAt(targetX * 0.68, 1.35, 0);
 }
