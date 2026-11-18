@@ -6,6 +6,26 @@ const graphicsError = document.querySelector("#graphics-error");
 const graphicsErrorMessage = document.querySelector("#graphics-error-message");
 const knockoutFlash = document.querySelector("#knockout-flash");
 const knockoutName = document.querySelector("#knockout-name");
+const cutsceneOverlay = document.querySelector("#cutscene-overlay");
+const cutsceneEyebrow = document.querySelector("#cutscene-eyebrow");
+const cutsceneTitle = document.querySelector("#cutscene-title");
+const cutsceneSubtitle = document.querySelector("#cutscene-subtitle");
+let cutsceneTimer = 0;
+
+function playCutscene(eyebrow, title, subtitle, duration = 2.1) {
+  cutsceneEyebrow.textContent = eyebrow;
+  cutsceneTitle.textContent = title;
+  cutsceneSubtitle.textContent = subtitle;
+  cutsceneOverlay.hidden = false;
+  cutsceneTimer = duration;
+}
+
+function endCutscene() {
+  cutsceneTimer = 0;
+  cutsceneOverlay.hidden = true;
+}
+
+document.querySelector("#cutscene-skip").addEventListener("click", endCutscene);
 const storageNotice = document.querySelector("#storage-notice");
 const fullscreenButton = document.querySelector("#toggle-fullscreen");
 const fullscreenNotice = document.querySelector("#fullscreen-notice");
@@ -419,8 +439,47 @@ function saveEntityUnlock() {
   }
 }
 
+function readUnlockedFighters() {
+  try {
+    const raw = window.localStorage.getItem("universeCrazyUnlockedFighters");
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") return new Set();
+    unlockPersistenceAvailable = false;
+    storageNotice.hidden = false;
+    return new Set();
+  }
+}
+
+function saveUnlockedFighters() {
+  if (!unlockPersistenceAvailable) return false;
+  try {
+    window.localStorage.setItem("universeCrazyUnlockedFighters", JSON.stringify([...unlockedFighters]));
+    return true;
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") throw error;
+    unlockPersistenceAvailable = false;
+    storageNotice.hidden = false;
+    return false;
+  }
+}
+
 let entityUnlocked = readEntityUnlock();
-const regularCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur", "monkey", "lizard"];
+const unlockedFighters = readUnlockedFighters();
+const starterCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur", "monkey", "lizard"];
+const unlockableCharacterIds = [
+  "ghost", "mrstar", "stubby", "stickman", "larry", "bob", "michael", "rand",
+  "robert", "bopper", "pewstickman", "liz", "cindy", "munchy", "cryptokin",
+  "fred", "alieny", "dops", "cartoonguy", "lostapple", "jim", "immy",
+  "pixelpal", "flameknight", "frostbite", "shadowcat", "thunderbolt", "captainclaw",
+  "astroduck", "cyberninja", "slimeking", "rocketpup", "magmaorb", "clockwork",
+  "cosmicowl", "neonpanda", "piratebones", "cactusjack", "bubblepop", "laserbear",
+  "turbosnail", "voltbunny", "goldenknight", "cheesewizard", "discoagent", "ironbeaver",
+  "starjelly", "cometkid", "spookybat", "megatoad", "galaxydragon", "omegabot"
+];
+const regularCharacterIds = [...starterCharacterIds, ...unlockableCharacterIds];
 let matchTime = 180;
 let matchActive = false;
 let matchEnded = false;
@@ -530,6 +589,810 @@ const characters = {
     special: "tongue",
     specialName: "Tongue Lash",
     specialDescription: "Snags a rival with a long lizard tongue."
+  },
+  ghost: {
+    name: "Ghost Boy",
+    tagline: "Spooky • Floating • Spectral",
+    icon: "👻",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#d9f4ff", dark: "#19263d", trim: "#7ff7ff", accent: "#a6e9ff" },
+    speed: 7.4,
+    power: 1.02,
+    build: "ghost",
+    special: "phase",
+    specialName: "Phantom Warp",
+    specialDescription: "Phases behind a rival and strikes.",
+    openingLine: "Booo!"
+  },
+  mrstar: {
+    name: "Mister Star",
+    tagline: "Cosmic • Golden • Shining",
+    icon: "⭐",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#ffd646", dark: "#3a250d", trim: "#fff4b8", accent: "#ff9b3d" },
+    speed: 7.0,
+    power: 1.12,
+    build: "star",
+    special: "starburst",
+    specialName: "Nova Shower",
+    specialDescription: "Launches three blazing golden stars.",
+    openingLine: "Time to shine!"
+  },
+  stubby: {
+    name: "Fleet Stubby",
+    tagline: "Short • Speedy • Scrappy",
+    icon: "⚡",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#ff9642", dark: "#2b1d2e", trim: "#ffe07d", accent: "#ff5c5c" },
+    speed: 8.2,
+    power: 0.92,
+    build: "stubby",
+    special: "dash",
+    specialName: "Stubby Blitz",
+    specialDescription: "Rockets forward at blistering speed.",
+    openingLine: "Too fast for you!"
+  },
+  stickman: {
+    name: "Stickman",
+    tagline: "Classic • Nimble • Sharp",
+    icon: "🏃",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#f2f4ff", dark: "#11131d", trim: "#72e8ff", accent: "#ffcf66" },
+    speed: 7.8,
+    power: 0.95,
+    build: "stick",
+    special: "dash",
+    specialName: "Stick Dash",
+    specialDescription: "Darts forward with a crisp stick strike.",
+    openingLine: "Drawn to win!"
+  },
+  larry: {
+    name: "Larry",
+    tagline: "Steady • Cool • Tough",
+    icon: "🧢",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#4c7de0", dark: "#1b243b", trim: "#f5c29b", accent: "#74d4ff" },
+    speed: 6.5,
+    power: 1.05,
+    build: "human",
+    accessory: "cap",
+    special: "dash",
+    specialName: "Power Dash",
+    specialDescription: "Charges straight into the nearest rival.",
+    openingLine: "Let's do this!"
+  },
+  bob: {
+    name: "Bob",
+    tagline: "Sturdy • Round • Fearless",
+    icon: "🥊",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#e06c53", dark: "#2b1a1c", trim: "#ffd6a8", accent: "#ffaa44" },
+    speed: 5.9,
+    power: 1.2,
+    build: "heavy",
+    special: "quake",
+    specialName: "Belly Slam",
+    specialDescription: "Shakes the arena with a heavy slam.",
+    openingLine: "Bob's ready!"
+  },
+  michael: {
+    name: "Michael",
+    tagline: "Sleek • Focused • Quick",
+    icon: "🕶",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#39486b", dark: "#121726", trim: "#8ef0ff", accent: "#ff5c8d" },
+    speed: 6.9,
+    power: 1.04,
+    build: "human",
+    accessory: "visor",
+    special: "sting",
+    specialName: "Visor Bolt",
+    specialDescription: "Fires a sharp neon visor beam.",
+    openingLine: "Locked on."
+  },
+  rand: {
+    name: "Rand",
+    tagline: "Wild • Chaotic • Fierce",
+    icon: "🔥",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#d95f2b", dark: "#2e1612", trim: "#ffd166", accent: "#ff4d6d" },
+    speed: 6.8,
+    power: 1.08,
+    build: "human",
+    accessory: "spiky",
+    special: "starburst",
+    specialName: "Chaos Burst",
+    specialDescription: "Fires a three-way spread of sparks.",
+    openingLine: "Wildcard!"
+  },
+  robert: {
+    name: "Robert",
+    tagline: "Armored • Heavy • Solid",
+    icon: "🛡",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#7e8ca6", dark: "#1d2433", trim: "#d4e6ff", accent: "#5cd1ff" },
+    speed: 5.7,
+    power: 1.22,
+    build: "heavy",
+    special: "dash",
+    specialName: "Steel Charge",
+    specialDescription: "Rams rivals with armored force.",
+    openingLine: "Standing firm."
+  },
+  bopper: {
+    name: "Stately Bopper",
+    tagline: "Dapper • Classy • Hard-Hitting",
+    icon: "🎩",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#57488a", dark: "#141221", trim: "#ffe28a", accent: "#ff6b8b" },
+    speed: 6.4,
+    power: 1.14,
+    build: "bopper",
+    special: "quake",
+    specialName: "Top-Hat Slam",
+    specialDescription: "Drops a shockwave with stately style.",
+    openingLine: "Good day to brawl!"
+  },
+  pewstickman: {
+    name: "Pew Stickman",
+    tagline: "Blaster • Nimble • Tactical",
+    icon: "🔫",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#e8f7ff", dark: "#141824", trim: "#4cf2ff", accent: "#ff59b8" },
+    speed: 7.7,
+    power: 0.98,
+    build: "stick",
+    accessory: "blaster",
+    special: "sting",
+    specialName: "Laser Pew",
+    specialDescription: "Fires a high-speed cyan laser shot.",
+    openingLine: "Pew pew!"
+  },
+  liz: {
+    name: "Liz",
+    tagline: "Swift • Agile • Bright",
+    icon: "🎀",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#e863b8", dark: "#30162c", trim: "#ffe0f4", accent: "#73f5ff" },
+    speed: 7.5,
+    power: 0.96,
+    build: "human",
+    accessory: "bow",
+    special: "phase",
+    specialName: "Acro Blink",
+    specialDescription: "Blinks behind a rival for a quick hit.",
+    openingLine: "Watch this!"
+  },
+  cindy: {
+    name: "Cindy",
+    tagline: "Sparkly • Pop • Energetic",
+    icon: "✨",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#62d6ff", dark: "#1d284a", trim: "#fff0a8", accent: "#ff7ad9" },
+    speed: 7.2,
+    power: 0.98,
+    build: "human",
+    accessory: "crown",
+    special: "starburst",
+    specialName: "Star Pop",
+    specialDescription: "Throws three sparkling pop stars.",
+    openingLine: "Sparkle time!"
+  },
+  munchy: {
+    name: "Munchy",
+    tagline: "Chubby • Hungry • Bouncy",
+    icon: "🍔",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#f2a649", dark: "#402412", trim: "#fff1c2", accent: "#ff6363" },
+    speed: 5.8,
+    power: 1.18,
+    build: "munchy",
+    special: "tongue",
+    specialName: "Snack Snatch",
+    specialDescription: "Snags nearby rivals from afar.",
+    openingLine: "Snack attack!"
+  },
+  cryptokin: {
+    name: "Cryptokin",
+    tagline: "Hooded • Mysterious • Eerie",
+    icon: "🧥",
+    rarity: "Secret",
+    dropChance: 0.03,
+    palette: { primary: "#392954", dark: "#110a1c", trim: "#b774ff", accent: "#52ffd8" },
+    speed: 6.8,
+    power: 1.16,
+    build: "cryptokin",
+    special: "void",
+    specialName: "Cryptic Rift",
+    specialDescription: "Pulls rivals into a dark void pulse.",
+    openingLine: "From the shadows..."
+  },
+  fred: {
+    name: "Fred",
+    tagline: "Teeth • Chomp • Walking",
+    icon: "🦷",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#f26b8a", dark: "#381421", trim: "#ffffff", accent: "#63b3ff" },
+    speed: 6.5,
+    power: 1.14,
+    build: "teeth",
+    special: "bite",
+    specialName: "Bite",
+    specialDescription: "Lunges forward with a chomping blue-glowing bite!",
+    openingLine: "Chomp chomp!"
+  },
+  alieny: {
+    name: "Alieny",
+    tagline: "Three-Eyed • Cosmic • Weird",
+    icon: "👽",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#55e86e", dark: "#13331c", trim: "#c7ff9c", accent: "#7d5cff" },
+    speed: 7.1,
+    power: 1.02,
+    build: "alien",
+    special: "void",
+    specialName: "Abduct Pulse",
+    specialDescription: "Pulls rivals in with alien gravity.",
+    openingLine: "Take me to your arena!"
+  },
+  dops: {
+    name: "DOPS",
+    tagline: "Bouncy • Cyber • Quirky",
+    icon: "🤖",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#4cd9c4", dark: "#182d38", trim: "#d4fff8", accent: "#ffd166" },
+    speed: 7.0,
+    power: 1.04,
+    build: "stubby",
+    accessory: "visor",
+    special: "wave",
+    specialName: "Pulse Wave",
+    specialDescription: "Sends a wide cyber wave forward.",
+    openingLine: "DOPS online!"
+  },
+  cartoonguy: {
+    name: "Secret Cartoon Guy",
+    tagline: "Retro • Inked • Rubber-Hose",
+    icon: "🎬",
+    rarity: "Secret",
+    dropChance: 0.025,
+    palette: { primary: "#1b1c24", dark: "#0a0a0f", trim: "#ffffff", accent: "#ffdf6b" },
+    speed: 7.6,
+    power: 1.12,
+    build: "cartoon",
+    special: "banana",
+    specialName: "Cartoon Gag",
+    specialDescription: "Drops a classic slipping banana peel!",
+    openingLine: "That's all, folks!"
+  },
+  lostapple: {
+    name: "Lost Apple",
+    tagline: "Crunchy • Tart • Lost in Space",
+    icon: "🍎",
+    rarity: "Secret",
+    dropChance: 0.025,
+    palette: { primary: "#e03131", dark: "#3b170e", trim: "#74c947", accent: "#ffe082" },
+    speed: 6.9,
+    power: 1.15,
+    build: "apple",
+    special: "quake",
+    specialName: "Apple Core Slam",
+    specialDescription: "Bounces down for a crunchy shockwave.",
+    openingLine: "How did I get here?!"
+  },
+  jim: {
+    name: "Jim",
+    tagline: "Chill • Cap • Ready",
+    icon: "🧢",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#3b82f6", dark: "#172542", trim: "#f5c29b", accent: "#93c5fd" },
+    speed: 6.7,
+    power: 1.03,
+    build: "human",
+    accessory: "cap",
+    special: "wave",
+    specialName: "Chill Wave",
+    specialDescription: "Sends a smooth crashing wave.",
+    openingLine: "Keep it chill."
+  },
+  immy: {
+    name: "Immy",
+    tagline: "Bright • Fast • Sparkling",
+    icon: "🌟",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#c94bf0", dark: "#2b1338", trim: "#ffe799", accent: "#5ff2ff" },
+    speed: 7.7,
+    power: 0.96,
+    build: "human",
+    accessory: "crown",
+    special: "phase",
+    specialName: "Spark Blink",
+    specialDescription: "Warps behind rivals in a flash.",
+    openingLine: "Catch the spark!"
+  },
+  pixelpal: {
+    name: "Pixel Pal",
+    tagline: "Retro • 8-Bit • Bouncy",
+    icon: "👾",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#7c5cff", dark: "#171333", trim: "#7cf7ff", accent: "#ff6ec7" },
+    speed: 7.0,
+    power: 1.0,
+    build: "stubby",
+    accessory: "visor",
+    special: "sting",
+    specialName: "Laser Pixel",
+    specialDescription: "Shoots an 8-bit energy bolt.",
+    openingLine: "Insert coin!"
+  },
+  flameknight: {
+    name: "Flame Knight",
+    tagline: "Fiery • Armored • Brave",
+    icon: "🔥",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#e85925", dark: "#2b120e", trim: "#ffd166", accent: "#ff3b30" },
+    speed: 6.1,
+    power: 1.18,
+    build: "heavy",
+    accessory: "crown",
+    special: "fire",
+    specialName: "Flame Breath",
+    specialDescription: "Scorches rivals with a fiery cone.",
+    openingLine: "Forge ahead!"
+  },
+  frostbite: {
+    name: "Frostbite",
+    tagline: "Icy • Crisp • Chill",
+    icon: "❄️",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#62d0ff", dark: "#122b42", trim: "#e6fbff", accent: "#38b6ff" },
+    speed: 6.8,
+    power: 1.05,
+    build: "human",
+    accessory: "spiky",
+    special: "wave",
+    specialName: "Ice Wave",
+    specialDescription: "Sends a freezing wave across the floor.",
+    openingLine: "Stay frosty!"
+  },
+  shadowcat: {
+    name: "Shadow Cat",
+    tagline: "Stealthy • Fast • Feline",
+    icon: "🐱",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#292738", dark: "#0b0a12", trim: "#c77dff", accent: "#ff63b6" },
+    speed: 7.9,
+    power: 1.02,
+    build: "human",
+    accessory: "spiky",
+    special: "phase",
+    specialName: "Shadow Pounce",
+    specialDescription: "Blinks behind a rival and strikes.",
+    openingLine: "Meow from the shadows!"
+  },
+  thunderbolt: {
+    name: "Thunderbolt",
+    tagline: "Electric • Rapid • Charged",
+    icon: "⚡",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#ffd43b", dark: "#26210c", trim: "#fff9cc", accent: "#4dabf7" },
+    speed: 8.1,
+    power: 0.96,
+    build: "human",
+    accessory: "visor",
+    special: "dash",
+    specialName: "Lightning Dash",
+    specialDescription: "Zips forward like a bolt of lightning.",
+    openingLine: "Shocking speed!"
+  },
+  captainclaw: {
+    name: "Captain Claw",
+    tagline: "Snappy • Tough • Coastal",
+    icon: "🦀",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#e04836", dark: "#36110e", trim: "#ffd2b3", accent: "#ff8c42" },
+    speed: 6.2,
+    power: 1.14,
+    build: "stubby",
+    special: "bite",
+    specialName: "Pincer Bite",
+    specialDescription: "Lunges in with a snapping pincer bite.",
+    openingLine: "Snap to it!"
+  },
+  astroduck: {
+    name: "Astro Duck",
+    tagline: "Quirky • Space • Feathered",
+    icon: "🦆",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#ffd95e", dark: "#2e2410", trim: "#ffffff", accent: "#ff8533" },
+    speed: 7.1,
+    power: 0.98,
+    build: "stubby",
+    accessory: "cap",
+    special: "starburst",
+    specialName: "Quack Stars",
+    specialDescription: "Fires three cosmic stars.",
+    openingLine: "Quack in space!"
+  },
+  cyberninja: {
+    name: "Cyber Ninja",
+    tagline: "Silent • Neon • Lethal",
+    icon: "🥷",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#1e293b", dark: "#090d16", trim: "#38f2af", accent: "#ff477e" },
+    speed: 7.8,
+    power: 1.06,
+    build: "cryptokin",
+    special: "phase",
+    specialName: "Neon Blink",
+    specialDescription: "Warps behind rivals with neon speed.",
+    openingLine: "Silent strike."
+  },
+  slimeking: {
+    name: "Slime King",
+    tagline: "Squishy • Royal • Bouncy",
+    icon: "🟢",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#4cd964", dark: "#143d1d", trim: "#ffe066", accent: "#8ef59f" },
+    speed: 5.9,
+    power: 1.16,
+    build: "munchy",
+    accessory: "crown",
+    special: "quake",
+    specialName: "Slime Bounce",
+    specialDescription: "Drops a royal bouncy shockwave.",
+    openingLine: "Bow to the slime!"
+  },
+  rocketpup: {
+    name: "Rocket Pup",
+    tagline: "Loyal • Turbo • Playful",
+    icon: "🐶",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#c98549", dark: "#362010", trim: "#fff0d6", accent: "#ff595e" },
+    speed: 7.6,
+    power: 0.95,
+    build: "human",
+    accessory: "cap",
+    special: "dash",
+    specialName: "Rocket Bark",
+    specialDescription: "Dashes forward at rocket speed.",
+    openingLine: "Woof woof!"
+  },
+  magmaorb: {
+    name: "Magma Orb",
+    tagline: "Molten • Heavy • Glowing",
+    icon: "🌋",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#ff5722", dark: "#2e1008", trim: "#ffd54f", accent: "#ff1744" },
+    speed: 5.6,
+    power: 1.24,
+    build: "munchy",
+    special: "fire",
+    specialName: "Magma Blast",
+    specialDescription: "Breathes a cone of molten fire.",
+    openingLine: "Eruption time!"
+  },
+  clockwork: {
+    name: "Clockwork",
+    tagline: "Brass • Precise • Mechanical",
+    icon: "⚙️",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#d49b4b", dark: "#2b1f10", trim: "#fff0bd", accent: "#6be5ff" },
+    speed: 6.4,
+    power: 1.1,
+    build: "bopper",
+    special: "sting",
+    specialName: "Gear Shot",
+    specialDescription: "Launches a spinning brass gear bolt.",
+    openingLine: "Right on time!"
+  },
+  cosmicowl: {
+    name: "Cosmic Owl",
+    tagline: "Wise • Winged • Starry",
+    icon: "🦉",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#7c65b8", dark: "#1e1633", trim: "#ffe28a", accent: "#74e8ff" },
+    speed: 7.2,
+    power: 1.04,
+    build: "star",
+    special: "starburst",
+    specialName: "Star Swoop",
+    specialDescription: "Sends three starry feathers flying.",
+    openingLine: "Hoo's next?"
+  },
+  neonpanda: {
+    name: "Neon Panda",
+    tagline: "Chill • Glowing • Strong",
+    icon: "🐼",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#f2f4f8", dark: "#151724", trim: "#5bf2ff", accent: "#ff66c4" },
+    speed: 6.1,
+    power: 1.18,
+    build: "heavy",
+    special: "quake",
+    specialName: "Bamboo Slam",
+    specialDescription: "Slams the arena with neon power.",
+    openingLine: "Panda power!"
+  },
+  piratebones: {
+    name: "Pirate Bones",
+    tagline: "Spooky • Swashbuckler • Bold",
+    icon: "☠️",
+    rarity: "Secret",
+    dropChance: 0.03,
+    palette: { primary: "#e8e6df", dark: "#14141c", trim: "#ff4d6d", accent: "#ffd166" },
+    speed: 6.9,
+    power: 1.12,
+    build: "teeth",
+    special: "bite",
+    specialName: "Skull Chomper",
+    specialDescription: "Lunges forward with a skeletal chomp.",
+    openingLine: "Arrr, matey!"
+  },
+  cactusjack: {
+    name: "Cactus Jack",
+    tagline: "Spiky • Desert • Tough",
+    icon: "🌵",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#3da35d", dark: "#13331e", trim: "#d8f3dc", accent: "#ffd166" },
+    speed: 6.3,
+    power: 1.08,
+    build: "human",
+    accessory: "spiky",
+    special: "sting",
+    specialName: "Needle Volley",
+    specialDescription: "Fires a sharp cactus needle.",
+    openingLine: "Don't hug me!"
+  },
+  bubblepop: {
+    name: "Bubble Pop",
+    tagline: "Floaty • Bright • Splashy",
+    icon: "🫧",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#74e8ff", dark: "#143547", trim: "#ffffff", accent: "#ff8ef2" },
+    speed: 7.3,
+    power: 0.94,
+    build: "munchy",
+    special: "wave",
+    specialName: "Bubble Surge",
+    specialDescription: "Sends a bubbly tidal wave forward.",
+    openingLine: "Pop goes the rival!"
+  },
+  laserbear: {
+    name: "Laser Bear",
+    tagline: "Mighty • Visor • Bear",
+    icon: "🐻",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#8c5638", dark: "#29170e", trim: "#ff5252", accent: "#ffe066" },
+    speed: 5.8,
+    power: 1.24,
+    build: "heavy",
+    accessory: "visor",
+    special: "sting",
+    specialName: "Bear Beam",
+    specialDescription: "Fires a blazing red visor beam.",
+    openingLine: "Grrr-eat shot!"
+  },
+  turbosnail: {
+    name: "Turbo Snail",
+    tagline: "Shelled • Drift • Speedy",
+    icon: "🐌",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#ff9e5e", dark: "#2e1b10", trim: "#66e4ee", accent: "#ffe066" },
+    speed: 7.4,
+    power: 0.98,
+    build: "stubby",
+    special: "dash",
+    specialName: "Shell Drift",
+    specialDescription: "Boosts forward in a turbo shell.",
+    openingLine: "Fastest snail alive!"
+  },
+  voltbunny: {
+    name: "Volt Bunny",
+    tagline: "Hoppy • Electric • Agile",
+    icon: "🐰",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#fff0b3", dark: "#2e2610", trim: "#ff6ec7", accent: "#5cf2ff" },
+    speed: 7.8,
+    power: 0.94,
+    build: "human",
+    accessory: "bow",
+    special: "phase",
+    specialName: "Hop Warp",
+    specialDescription: "Blinks behind a rival in one hop.",
+    openingLine: "Hop to it!"
+  },
+  goldenknight: {
+    name: "Golden Knight",
+    tagline: "Royal • Shining • Armored",
+    icon: "👑",
+    rarity: "Secret",
+    dropChance: 0.03,
+    palette: { primary: "#ffd43b", dark: "#332508", trim: "#fff7cc", accent: "#ff8c38" },
+    speed: 6.2,
+    power: 1.25,
+    build: "heavy",
+    accessory: "crown",
+    special: "quake",
+    specialName: "Royal Impact",
+    specialDescription: "Shatters the floor with golden force.",
+    openingLine: "For the crown!"
+  },
+  cheesewizard: {
+    name: "Cheese Wizard",
+    tagline: "Cheesy • Magical • Goofy",
+    icon: "🧀",
+    rarity: "Secret",
+    dropChance: 0.025,
+    palette: { primary: "#ffd93b", dark: "#3b2c0a", trim: "#fff3b0", accent: "#ff922b" },
+    speed: 6.8,
+    power: 1.1,
+    build: "bopper",
+    special: "banana",
+    specialName: "Slippery Fondue",
+    specialDescription: "Drops a slippery gag on the arena.",
+    openingLine: "Say cheese!"
+  },
+  discoagent: {
+    name: "Disco Agent",
+    tagline: "Groovy • Flashy • Smooth",
+    icon: "🪩",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#d966ff", dark: "#1c102e", trim: "#ffffff", accent: "#5cf2ff" },
+    speed: 7.2,
+    power: 1.02,
+    build: "human",
+    accessory: "visor",
+    special: "starburst",
+    specialName: "Disco Flash",
+    specialDescription: "Blasts three glittering disco stars.",
+    openingLine: "Time to boogie!"
+  },
+  ironbeaver: {
+    name: "Iron Beaver",
+    tagline: "Chompy • Sturdy • Builder",
+    icon: "🦫",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#9c6644", dark: "#2b1a10", trim: "#e6ccb2", accent: "#63b3ff" },
+    speed: 6.4,
+    power: 1.12,
+    build: "stubby",
+    special: "bite",
+    specialName: "Timber Bite",
+    specialDescription: "Chomps forward with iron teeth.",
+    openingLine: "Timber!"
+  },
+  starjelly: {
+    name: "Star Jelly",
+    tagline: "Glowing • Floaty • Cosmic",
+    icon: "🪼",
+    rarity: "Ultra Rare",
+    dropChance: 0.06,
+    palette: { primary: "#7cf2ff", dark: "#12243b", trim: "#ff8ef2", accent: "#b774ff" },
+    speed: 7.1,
+    power: 1.04,
+    build: "ghost",
+    special: "void",
+    specialName: "Jelly Pull",
+    specialDescription: "Pulls rivals into a glowing cosmic pulse.",
+    openingLine: "Bloop bloop!"
+  },
+  cometkid: {
+    name: "Comet Kid",
+    tagline: "Blazing • Fast • Cosmic",
+    icon: "☄️",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#ff884d", dark: "#2e140c", trim: "#74e8ff", accent: "#ffe066" },
+    speed: 7.9,
+    power: 1.0,
+    build: "star",
+    special: "dash",
+    specialName: "Comet Dash",
+    specialDescription: "Streaks across the arena like a comet.",
+    openingLine: "Incoming!"
+  },
+  spookybat: {
+    name: "Spooky Bat",
+    tagline: "Night • Winged • Quick",
+    icon: "🦇",
+    rarity: "Uncommon",
+    dropChance: 0.3,
+    palette: { primary: "#4f3a6e", dark: "#120c1c", trim: "#ff5c8a", accent: "#a98eff" },
+    speed: 7.6,
+    power: 0.96,
+    build: "cryptokin",
+    special: "phase",
+    specialName: "Night Swoop",
+    specialDescription: "Swoops behind rivals in the dark.",
+    openingLine: "Screeech!"
+  },
+  megatoad: {
+    name: "Mega Toad",
+    tagline: "Giant • Bouncy • Croaky",
+    icon: "🐸",
+    rarity: "Rare",
+    dropChance: 0.14,
+    palette: { primary: "#40916c", dark: "#102b1f", trim: "#b7e4c7", accent: "#ffd166" },
+    speed: 6.2,
+    power: 1.18,
+    build: "munchy",
+    special: "tongue",
+    specialName: "Mega Tongue",
+    specialDescription: "Snags rivals from across the arena.",
+    openingLine: "RIBBIT!"
+  },
+  galaxydragon: {
+    name: "Galaxy Dragon",
+    tagline: "Mythic • Starry • Fierce",
+    icon: "🐉",
+    rarity: "Secret",
+    dropChance: 0.025,
+    palette: { primary: "#6f42c1", dark: "#170b2e", trim: "#ffd166", accent: "#ff4d6d" },
+    speed: 6.7,
+    power: 1.26,
+    build: "heavy",
+    accessory: "crown",
+    special: "fire",
+    specialName: "Cosmic Flame",
+    specialDescription: "Breathes a devastating cone of starfire.",
+    openingLine: "Feel the galaxy's roar!"
+  },
+  omegabot: {
+    name: "Omega Bot",
+    tagline: "Supreme • Cyber • Legendary",
+    icon: "🦾",
+    rarity: "Secret",
+    dropChance: 0.025,
+    palette: { primary: "#495057", dark: "#0f1117", trim: "#ff3b30", accent: "#66e4ee" },
+    speed: 6.5,
+    power: 1.28,
+    build: "heavy",
+    accessory: "visor",
+    special: "void",
+    specialName: "Omega Rift",
+    specialDescription: "Pulls rivals into a high-energy rift.",
+    openingLine: "Omega protocol engaged."
   },
   entity: {
     name: "Entity.exe",
@@ -1319,6 +2182,115 @@ function createFighterVisual(kind) {
         const fin = addMesh(body, new THREE.ConeGeometry(0.22, 0.68, 5), trimMat, [side * 0.49, 1.36, -0.18]);
         fin.rotation.z = side * Math.PI / 2;
       }
+    } else if (characters[kind].build === "ghost") {
+      const ghostMat = new THREE.MeshStandardMaterial({
+        color: palette.primary, emissive: palette.trim, emissiveIntensity: 0.45,
+        transparent: true, opacity: 0.78, roughness: 0.2
+      });
+      body.clear();
+      addMesh(body, new THREE.CapsuleGeometry(0.44, 0.78, 6, 14), ghostMat, [0, 1.32, 0]);
+      addMesh(body, new THREE.SphereGeometry(0.44, 18, 14), ghostMat, [0, 1.92, 0.02]);
+      for (let i = 0; i < 5; i += 1) {
+        const angle = (i / 5) * Math.PI * 2;
+        addMesh(body, new THREE.ConeGeometry(0.16, 0.42, 6), ghostMat, [Math.cos(angle) * 0.3, 0.75, Math.sin(angle) * 0.25]).rotation.x = Math.PI;
+      }
+      for (const side of [-1, 1]) {
+        addRealisticEye(side * 0.14, 1.96, 0.37, 0.095, "#2ce6ff");
+        animatedLimbs.push(createLimb(body, palette, side * 0.54, 1.25, 0, 0.38, 0.12, side * -0.25));
+      }
+    } else if (characters[kind].build === "star") {
+      const starGlow = material(palette.primary, 0.25, 0.25, { emissive: palette.accent, emissiveIntensity: 0.35 });
+      addMesh(body, new THREE.OctahedronGeometry(0.55, 0), starGlow, [0, 1.96, 0.02], [1.1, 1.1, 0.52]);
+      addMesh(body, new THREE.OctahedronGeometry(0.26, 0), trimMat, [0, 1.16, 0.42]);
+    } else if (characters[kind].build === "stubby") {
+      root.scale.set(1.12, 0.78, 1.12);
+    } else if (characters[kind].build === "stick") {
+      body.clear();
+      const stickMat = material(palette.dark, 0.5, 0.1);
+      addMesh(body, new THREE.CylinderGeometry(0.08, 0.08, 0.92, 8), stickMat, [0, 1.14, 0]);
+      addMesh(body, new THREE.SphereGeometry(0.36, 18, 14), mainMat, [0, 1.94, 0]);
+      for (const side of [-1, 1]) {
+        addRealisticEye(side * 0.12, 1.97, 0.31, 0.075, "#3b82f6");
+        animatedLimbs.push(createLimb(body, { primary: palette.dark, trim: palette.trim, accent: palette.accent }, side * 0.22, 1.24, 0, 0.54, 0.06, side * -0.28));
+        animatedLimbs.push(createLimb(body, { primary: palette.dark, trim: palette.trim, accent: palette.accent }, side * 0.14, 0.42, 0, 0.42, 0.065, side * 0.08));
+      }
+      if (characters[kind].accessory === "blaster") {
+        addMesh(body, new THREE.BoxGeometry(0.14, 0.14, 0.45), trimMat, [0.42, 1.24, 0.32]);
+      }
+    } else if (characters[kind].build === "bopper") {
+      const hatMat = material("#151520", 0.35, 0.2);
+      addMesh(body, new THREE.CylinderGeometry(0.56, 0.56, 0.06, 18), hatMat, [0, 2.28, 0.02]);
+      addMesh(body, new THREE.CylinderGeometry(0.34, 0.38, 0.46, 16), hatMat, [0, 2.52, 0.02]);
+      addMesh(body, new THREE.BoxGeometry(0.32, 0.12, 0.08), trimMat, [0, 1.46, 0.42]);
+    } else if (characters[kind].build === "munchy") {
+      addMesh(body, new THREE.SphereGeometry(0.68, 20, 16), mainMat, [0, 1.12, 0], [1.14, 0.96, 1.05]);
+      addMesh(body, new THREE.BoxGeometry(0.34, 0.09, 0.1), darkMat, [0, 1.72, 0.41]);
+    } else if (characters[kind].build === "cryptokin") {
+      const hoodMat = material(palette.primary, 0.65, 0.1);
+      addMesh(body, new THREE.ConeGeometry(0.62, 0.95, 10), hoodMat, [0, 2.02, -0.02]);
+      addMesh(body, new THREE.ConeGeometry(0.72, 1.25, 10), hoodMat, [0, 1.02, -0.04]);
+    } else if (characters[kind].build === "alien") {
+      for (const side of [-1, 0, 1]) {
+        addRealisticEye(side * 0.14, 1.98 + (side === 0 ? 0.14 : 0), 0.36, 0.075, "#9c4dff");
+      }
+      for (const side of [-1, 1]) {
+        addMesh(body, new THREE.CylinderGeometry(0.03, 0.04, 0.34, 8), mainMat, [side * 0.18, 2.38, 0]);
+        addMesh(body, new THREE.SphereGeometry(0.085, 10, 8), trimMat, [side * 0.18, 2.56, 0]);
+      }
+    } else if (characters[kind].build === "cartoon") {
+      const gloveMat = material("#ffffff", 0.3, 0.05);
+      for (const side of [-1, 1]) {
+        addMesh(body, new THREE.SphereGeometry(0.2, 12, 10), gloveMat, [side * 0.64, 0.78, 0.05]);
+        addMesh(body, new THREE.SphereGeometry(0.22, 12, 10), gloveMat, [side * 0.22, 0.13, 0.12], [1.25, 0.62, 1.35]);
+        addRealisticEye(side * 0.14, 1.96, 0.36, 0.11, "#111118");
+      }
+    } else if (characters[kind].build === "apple") {
+      body.clear();
+      const stemMat = material("#593215", 0.75, 0.05);
+      const leafMat = material("#64d147", 0.45, 0.05);
+      addMesh(body, new THREE.SphereGeometry(0.64, 22, 18), mainMat, [0, 1.28, 0], [1.06, 0.96, 1.02]);
+      addMesh(body, new THREE.CylinderGeometry(0.05, 0.07, 0.34, 8), stemMat, [0, 1.98, 0]);
+      const leaf = addMesh(body, new THREE.SphereGeometry(0.18, 10, 8), leafMat, [0.16, 2.02, 0.02], [1.2, 0.45, 0.6]);
+      leaf.rotation.z = 0.4;
+      for (const side of [-1, 1]) {
+        addRealisticEye(side * 0.18, 1.42, 0.56, 0.11, "#2f80ed");
+        animatedLimbs.push(createLimb(body, palette, side * 0.64, 1.18, 0, 0.38, 0.11, side * -0.2));
+        animatedLimbs.push(createLimb(body, palette, side * 0.22, 0.42, 0, 0.34, 0.12, side * 0.04));
+      }
+    } else if (characters[kind].build === "teeth") {
+      body.clear();
+      const toothMat = material("#ffffff", 0.18, 0.05);
+      const gumMat = material(palette.primary, 0.42, 0.06);
+      // Lower & upper jaw gums (walking pair of teeth with legs!)
+      addMesh(body, new THREE.SphereGeometry(0.56, 18, 12, 0, Math.PI * 2, Math.PI * 0.5, Math.PI * 0.5), gumMat, [0, 1.16, 0], [1.1, 0.78, 1.05]);
+      const upperJaw = addMesh(body, new THREE.SphereGeometry(0.56, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), gumMat, [0, 1.42, -0.04], [1.1, 0.78, 1.05]);
+      upperJaw.rotation.x = -0.18;
+      addMesh(body, new THREE.BoxGeometry(0.75, 0.14, 0.55), darkMat, [0, 1.24, 0.04]);
+      for (const tx of [-0.34, -0.17, 0, 0.17, 0.34]) {
+        addMesh(body, new THREE.BoxGeometry(0.13, 0.19, 0.12), toothMat, [tx, 1.19, 0.45]);
+        addMesh(body, new THREE.BoxGeometry(0.13, 0.19, 0.12), toothMat, [tx, 1.38, 0.44]);
+      }
+      for (const side of [-1, 1]) {
+        animatedLimbs.push(createLimb(body, { primary: palette.trim, trim: palette.accent, accent: palette.accent }, side * 0.24, 0.42, 0, 0.44, 0.14, side * 0.04));
+        addMesh(body, new THREE.BoxGeometry(0.32, 0.16, 0.44), darkMat, [side * 0.24, 0.11, 0.1]);
+      }
+    }
+
+    if (characters[kind].accessory === "cap") {
+      addMesh(body, new THREE.SphereGeometry(0.41, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), trimMat, [0, 2.0, 0]);
+      addMesh(body, new THREE.BoxGeometry(0.48, 0.06, 0.34), trimMat, [0, 2.04, 0.32]);
+    } else if (characters[kind].accessory === "visor") {
+      addMesh(body, new THREE.BoxGeometry(0.58, 0.14, 0.1), trimMat, [0, 1.95, 0.4]);
+    } else if (characters[kind].accessory === "spiky") {
+      for (const side of [-0.18, 0, 0.18]) {
+        addMesh(body, new THREE.ConeGeometry(0.12, 0.36, 5), trimMat, [side, 2.38, 0]);
+      }
+    } else if (characters[kind].accessory === "bow") {
+      for (const side of [-1, 1]) {
+        addMesh(body, new THREE.ConeGeometry(0.14, 0.24, 5), trimMat, [side * 0.18, 2.34, 0]).rotation.z = side * Math.PI / 2;
+      }
+    } else if (characters[kind].accessory === "crown") {
+      addMesh(body, new THREE.CylinderGeometry(0.24, 0.2, 0.22, 6), trimMat, [0, 2.36, 0]);
     }
   }
 
@@ -1555,13 +2527,15 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   }
   clearInputState();
   clearFighters();
-  const opponentPool = regularCharacterIds.filter((kind) => kind !== selectedFighter);
+  const opponentPool = regularCharacterIds.filter((kind) => kind !== selectedFighter && isFighterUnlocked(kind));
+  const fallbackPool = starterCharacterIds.filter((kind) => kind !== selectedFighter);
+  const activePool = opponentPool.length >= 3 ? opponentPool : [...opponentPool, ...fallbackPool];
   const fighterCount = secretChallengeActive ? 2 : 4;
   fighters.push(makeFighter(selectedFighter, 0));
   for (let index = 1; index < fighterCount; index += 1) {
     const kind = index === 1 && opponentOverride
       ? opponentOverride
-      : opponentPool[(index - 1) % opponentPool.length];
+      : activePool[(index - 1) % activePool.length];
     fighters.push(makeFighter(kind, index));
   }
   const openingLines = {
@@ -1576,7 +2550,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     monkey: "Ooh ooh aah!",
     lizard: "Stay cool!"
   };
-  fighters.forEach((fighter) => createSpeechBubble(fighter, openingLines[fighter.kind]));
+  fighters.forEach((fighter) => createSpeechBubble(fighter, openingLines[fighter.kind] || characters[fighter.kind].openingLine || "Let's fight!"));
   const portalEntryDuration = 1.05;
   fighters.forEach((fighter) => {
     fighter.portalEntry = portalEntryDuration;
@@ -1610,6 +2584,14 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   updateHud();
   document.querySelector("#screen-reader-status").textContent =
     `The portal opens. ${fighters.map((fighter) => `${characters[fighter.kind].name} enters the arena`).join(". ")}.`;
+  const rivalNames = fighters.slice(1).map((fighter) => characters[fighter.kind].name).join(" • ");
+  const arenaTitle = hiddenRealmActive ? secretTheme.name : arenaThemes[Math.floor(arenaIndex / 20) % arenaThemes.length].name;
+  playCutscene(
+    secretChallengeActive ? "SECRET BOSS CUTSCENE" : "PORTAL CUTSCENE",
+    secretChallengeActive ? "ENTITY.EXE AWAKENS" : `ENTERING ${arenaTitle.toUpperCase()}`,
+    secretChallengeActive ? "Defeat Entity.exe in The Null Abyss to unlock the secret skin!" : `${characters[fighters[0].kind].name} vs. ${rivalNames}`,
+    secretChallengeActive ? 2.6 : 1.9
+  );
   setMusicScene("battle", fighters[1]?.kind || null);
   renderer.domElement.focus();
 }
@@ -1656,6 +2638,7 @@ function showSelection() {
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = false;
+  endCutscene();
   clearFighters();
   updateFighterPreview(selectedFighter);
   setMusicScene("select");
@@ -1674,6 +2657,7 @@ function showPortal() {
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = false;
+  endCutscene();
   clearFighters();
   setMusicScene("title");
 }
@@ -1699,10 +2683,17 @@ function finishMatch(winnerIndex, reason) {
       entityUnlocked = true;
       const saved = saveEntityUnlock();
       document.querySelector('[data-fighter="entity"]').hidden = false;
-      document.querySelector("#fighter-count").textContent = "09 FIGHTERS";
+      refreshUnlockUI();
       unlockMessage = saved
         ? " Entity.exe skin unlocked!"
         : " Entity.exe skin unlocked for this visit; embedded storage is blocked, so it will not persist after reload.";
+    }
+  } else {
+    const bonusMultiplier = winner === fighters[0] ? 1.5 : 0.45;
+    const dropped = rollRareUnlock(bonusMultiplier);
+    if (dropped) {
+      unlockMessage = ` RARE UNLOCK! ${characters[dropped].name} (${characters[dropped].rarity}) joined your roster!`;
+      playCutscene("RARE UNLOCK!", `${characters[dropped].name.toUpperCase()} UNLOCKED!`, `${characters[dropped].rarity} Fighter · Special: ${characters[dropped].specialName}`, 2.5);
     }
   }
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";
@@ -1927,6 +2918,17 @@ function useSpecialAbility(fighter) {
     case "fire":
       spawnFireBreath(fighter);
       break;
+    case "bite": {
+      fighter.vx = fighter.facing * 10.5;
+      spawnAbilityRing(fighter, "#63b3ff", 0.34);
+      const target = nearestOpponent(fighter);
+      if (target && (target.x - fighter.x) * fighter.facing > -0.5
+        && Math.abs(target.z - fighter.z) < 1.9
+        && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 3.1) {
+        hitTarget(fighter, target, 13.5 * character.power * boost, 6.2);
+      }
+      break;
+    }
     case "banana":
       launchProjectile(fighter, {
         shape: "banana",
@@ -2633,18 +3635,165 @@ function frame(timestamp = 0) {
       knockoutFlash.classList.remove("play");
     }
   }
+  if (cutsceneTimer > 0) {
+    cutsceneTimer = Math.max(0, cutsceneTimer - delta);
+    if (cutsceneTimer === 0) cutsceneOverlay.hidden = true;
+  }
   justPressed.clear();
   if (!graphicsContextLost) renderer.render(scene, camera);
   animationFrame = requestAnimationFrame(frame);
 }
 
+function isFighterUnlocked(kind) {
+  if (kind === "entity") return entityUnlocked;
+  return starterCharacterIds.includes(kind) || unlockedFighters.has(kind);
+}
+
+function refreshUnlockUI() {
+  const totalCount = regularCharacterIds.length + 1;
+  const unlockedCount = starterCharacterIds.length + unlockedFighters.size + (entityUnlocked ? 1 : 0);
+  document.querySelector("#fighter-count").textContent = `${unlockedCount} FIGHTERS`;
+  document.querySelector("#unlock-progress").textContent = `${unlockedCount} / ${totalCount} UNLOCKED`;
+  document.querySelectorAll(".fighter-card").forEach((card) => {
+    const kind = card.dataset.fighter;
+    if (kind === "entity") {
+      card.hidden = !entityUnlocked;
+      return;
+    }
+    const unlocked = isFighterUnlocked(kind);
+    card.classList.toggle("locked", !unlocked);
+    const indicator = card.querySelector(".pick-indicator");
+    if (indicator) indicator.textContent = unlocked ? "✓" : "🔒";
+  });
+}
+
+function rollRareUnlock(multiplier = 1) {
+  const locked = unlockableCharacterIds.filter((kind) => !unlockedFighters.has(kind));
+  if (locked.length === 0) return null;
+  const weighted = locked.map((kind) => ({
+    kind,
+    chance: Math.min(0.95, (characters[kind].dropChance || 0.1) * multiplier)
+  }));
+  // Shuffle order so rarer or common characters each get a fair shot
+  const candidate = weighted[Math.floor(Math.random() * weighted.length)];
+  if (Math.random() <= candidate.chance) {
+    unlockedFighters.add(candidate.kind);
+    saveUnlockedFighters();
+    refreshUnlockUI();
+    return candidate.kind;
+  }
+  return null;
+}
+
+const fighterGrid = document.querySelector("#fighter-grid");
+const entityCard = fighterGrid.querySelector('[data-fighter="entity"]');
+unlockableCharacterIds.forEach((kind) => {
+  const info = characters[kind];
+  const button = document.createElement("button");
+  button.className = "fighter-card";
+  button.type = "button";
+  button.dataset.fighter = kind;
+  button.setAttribute("aria-pressed", "false");
+  button.innerHTML = `
+    <span class="fighter-art custom-art" data-icon="${info.icon}" aria-hidden="true"><i></i></span>
+    <span class="fighter-card-copy">
+      <span class="fighter-type">${info.rarity.toUpperCase()}</span>
+      <strong>${info.name}</strong>
+      <small>${info.tagline}</small>
+      <small class="ability-note">Special: ${info.specialName}</small>
+    </span>
+    <span class="pick-indicator" aria-hidden="true">🔒</span>
+  `;
+  fighterGrid.insertBefore(button, entityCard);
+});
+
 createUniverseBackdrop();
 createStars();
 createArena(arenaIndex);
 updateArenaLabel();
-document.querySelector('[data-fighter="entity"]').hidden = !entityUnlocked;
-document.querySelector("#fighter-count").textContent = entityUnlocked ? "11 FIGHTERS" : "10 FIGHTERS";
+refreshUnlockUI();
 updateControlsHint();
+
+document.querySelector("#roll-unlock").addEventListener("click", () => {
+  const unlocked = rollRareUnlock(1.35);
+  if (unlocked) {
+    const info = characters[unlocked];
+    document.querySelector("#preview-note").textContent = `🎉 UNLOCKED ${info.name} (${info.rarity})! Special: ${info.specialName} — ${info.specialDescription}`;
+    document.querySelector(`[data-fighter="${unlocked}"]`)?.click();
+  } else {
+    const remaining = unlockableCharacterIds.filter((kind) => !unlockedFighters.has(kind)).length;
+    document.querySelector("#preview-note").textContent = remaining
+      ? `No drop this roll — ${remaining} rare fighters still locked! Keep rolling or win matches!`
+      : "All 63 fighters are unlocked!";
+  }
+});
+
+const adminModal = document.querySelector("#admin-modal");
+const adminGate = document.querySelector("#admin-gate");
+const adminTools = document.querySelector("#admin-tools");
+const adminCodeInput = document.querySelector("#admin-code-input");
+const adminStatus = document.querySelector("#admin-status");
+let adminAuthorized = false;
+
+function tryUnlockAdmin() {
+  if (adminCodeInput.value.trim() === "2058") {
+    adminAuthorized = true;
+    adminGate.hidden = true;
+    adminTools.hidden = false;
+    adminStatus.textContent = "";
+  } else {
+    adminStatus.textContent = "Incorrect admin code.";
+  }
+}
+
+document.querySelector("#open-admin").addEventListener("click", () => {
+  adminModal.hidden = false;
+  adminGate.hidden = adminAuthorized;
+  adminTools.hidden = !adminAuthorized;
+  adminStatus.textContent = "";
+  if (!adminAuthorized) {
+    adminCodeInput.value = "";
+    adminCodeInput.focus();
+  }
+});
+document.querySelector("#close-admin").addEventListener("click", () => {
+  adminModal.hidden = true;
+});
+document.querySelector("#unlock-admin").addEventListener("click", tryUnlockAdmin);
+adminCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") tryUnlockAdmin();
+});
+document.querySelector("#admin-unlock-all").addEventListener("click", () => {
+  unlockableCharacterIds.forEach((kind) => unlockedFighters.add(kind));
+  entityUnlocked = true;
+  saveUnlockedFighters();
+  saveEntityUnlock();
+  refreshUnlockUI();
+  document.querySelector("#preview-note").textContent = "🔓 Admin unlocked all 63 fighters!";
+  adminModal.hidden = true;
+});
+document.querySelector("#admin-boss-fight").addEventListener("click", () => {
+  adminModal.hidden = true;
+  beginSecretChallenge();
+});
+document.querySelector("#admin-next-track").addEventListener("click", nextMusicTrack);
+document.querySelector("#admin-reset-unlocks").addEventListener("click", () => {
+  unlockedFighters.clear();
+  entityUnlocked = false;
+  saveUnlockedFighters();
+  try {
+    window.localStorage.removeItem("universeCrazyEntitySkin");
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") throw error;
+  }
+  if (!isFighterUnlocked(selectedFighter)) {
+    selectedFighter = "bumble";
+    document.querySelector('[data-fighter="bumble"]')?.click();
+  }
+  refreshUnlockUI();
+  document.querySelector("#preview-note").textContent = "🔒 Unlocks reset to the 10 starter fighters.";
+  adminModal.hidden = true;
+});
 
 document.querySelector("#enter-portal").addEventListener("click", () => {
   showSelection();
@@ -2668,7 +3817,14 @@ document.querySelector("#arena-random").addEventListener("click", () => changeAr
 
 document.querySelectorAll(".fighter-card").forEach((card) => {
   card.addEventListener("click", () => {
-    selectedFighter = card.dataset.fighter;
+    const kind = card.dataset.fighter;
+    if (!isFighterUnlocked(kind)) {
+      const info = characters[kind];
+      const chancePct = Math.round((info.dropChance || 0.1) * 1000) / 10;
+      document.querySelector("#preview-note").textContent = `🔒 ${info.name} is ${info.rarity} (${chancePct}% rare drop). Win matches or use Mystery Roll to unlock!`;
+      return;
+    }
+    selectedFighter = kind;
     updateFighterPreview(selectedFighter);
     updateControlsHint();
     document.querySelectorAll(".fighter-card").forEach((item) => {

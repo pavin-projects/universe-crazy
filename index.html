@@ -35,6 +35,16 @@
         <span>K.O.</span>
         <small id="knockout-name"></small>
       </div>
+      <section class="cutscene-overlay" id="cutscene-overlay" hidden aria-live="polite">
+        <div class="cutscene-bar top"></div>
+        <div class="cutscene-card">
+          <p class="eyebrow" id="cutscene-eyebrow">CINEMATIC INTRO</p>
+          <h2 id="cutscene-title">ENTERING THE ARENA</h2>
+          <p id="cutscene-subtitle">Fighters emerge from the portal!</p>
+          <button class="secondary-button cutscene-skip" id="cutscene-skip" type="button">Skip ⏭</button>
+        </div>
+        <div class="cutscene-bar bottom"></div>
+      </section>
       <section class="screen portal-screen" id="portal-screen" aria-labelledby="game-title">
         <div class="portal-copy">
           <h1 id="game-title">UNIVERSE<br><span>CRAZY</span></h1>
@@ -58,6 +68,11 @@
           <p class="eyebrow">CHOOSE YOUR CHAMPION</p>
           <h2 id="select-title">Who are you?</h2>
           <p class="preview-note" id="preview-note">Bumble Boy is warming up beside the portal.</p>
+          <div class="unlock-bar">
+            <span class="unlock-progress" id="unlock-progress">10 / 63 UNLOCKED</span>
+            <button class="secondary-button roll-unlock-button" id="roll-unlock" type="button">🎲 Mystery Roll</button>
+            <button class="secondary-button admin-open-button" id="open-admin" type="button">🔑 Admin</button>
+          </div>
         </div>
         <div class="fighter-grid" id="fighter-grid">
           <button class="fighter-card selected" type="button" data-fighter="bumble" aria-pressed="true">
@@ -213,6 +228,29 @@
         </div>
       </div>
 
+      <section class="admin-modal" id="admin-modal" hidden aria-labelledby="admin-title">
+        <div class="admin-card">
+          <div class="screen-topline">
+            <span class="eyebrow">ADMIN PANEL</span>
+            <button class="text-button" id="close-admin" type="button">✕ Close</button>
+          </div>
+          <h2 id="admin-title">Admin Tools</h2>
+          <div class="admin-gate" id="admin-gate">
+            <label for="admin-code-input">Enter Admin Code</label>
+            <div class="admin-code-row">
+              <input id="admin-code-input" type="password" inputmode="numeric" maxlength="12" placeholder="Code">
+              <button class="primary-button" id="unlock-admin" type="button">Unlock</button>
+            </div>
+            <p class="admin-status" id="admin-status" role="status"></p>
+          </div>
+          <div class="admin-tools" id="admin-tools" hidden>
+            <button class="primary-button" id="admin-unlock-all" type="button">🔓 Unlock All 63 Fighters</button>
+            <button class="secondary-button" id="admin-boss-fight" type="button">👁 Fight Entity.exe Boss</button>
+            <button class="secondary-button" id="admin-next-track" type="button">🎵 Skip Music Track</button>
+            <button class="secondary-button" id="admin-reset-unlocks" type="button">🔒 Reset Unlocks to Starters</button>
+          </div>
+        </div>
+      </section>
       <p class="sr-only" id="screen-reader-status" role="status" aria-live="polite"></p>
     </main>
     <script type="module" src="./src/main.js"></script>
