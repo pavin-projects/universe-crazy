@@ -43,10 +43,8 @@ const storageNotice = document.querySelector("#storage-notice");
 const fullscreenButton = document.querySelector("#toggle-fullscreen");
 const fullscreenNotice = document.querySelector("#fullscreen-notice");
 document.querySelector("#retry-graphics").addEventListener("click", () => window.location.reload());
-const musicButton = document.querySelector("#toggle-music");
-const musicButtonLabel = document.querySelector("#music-toggle-label");
-const musicTrackButton = document.querySelector("#next-track");
-const musicTrackLabel = document.querySelector("#music-track-label");
+const adminMusicToggle = document.querySelector("#admin-toggle-music");
+const adminNextTrack = document.querySelector("#admin-next-track");
 const musicStatus = document.querySelector("#music-status");
 const musicScales = {
   major: [0, 2, 4, 5, 7, 9, 11, 12],
@@ -179,16 +177,14 @@ function scheduleMusicStep(step, startTime) {
 
 function updateMusicButton() {
   const track = musicTracks[currentTrackIndex];
-  musicButtonLabel.textContent = `Music: ${musicEnabled ? "On" : "Off"}`;
-  musicButton.setAttribute("aria-pressed", String(musicEnabled));
-  musicButton.setAttribute("aria-label", musicEnabled ? "Mute music" : "Turn music on");
-  musicTrackLabel.textContent = `Track ${currentTrackIndex + 1}/30 · ${track.title}`;
+  if (adminMusicToggle) adminMusicToggle.textContent = `🔊 Music: ${musicEnabled ? "On" : "Off"}`;
+  if (adminNextTrack) adminNextTrack.textContent = `🎵 Track ${currentTrackIndex + 1}/30 · ${track.title}`;
 }
 
 function handleMusicError(error) {
   if (!(error instanceof DOMException)
     || !["NotAllowedError", "InvalidStateError"].includes(error.name)) throw error;
-  musicStatus.textContent = "Music could not start. Try pressing the music button again.";
+  musicStatus.textContent = "Music could not start. Interact with the page to resume audio.";
 }
 
 async function startMusic() {
@@ -196,10 +192,11 @@ async function startMusic() {
   if (!window.AudioContext) {
     musicEnabled = false;
     musicStatus.textContent = "Music is not supported by this browser.";
-    musicButton.disabled = true;
-    musicTrackButton.disabled = true;
-    musicButtonLabel.textContent = "Music unavailable";
-    musicButton.setAttribute("aria-pressed", "false");
+    if (adminMusicToggle) {
+      adminMusicToggle.disabled = true;
+      adminMusicToggle.textContent = "Music unavailable";
+    }
+    if (adminNextTrack) adminNextTrack.disabled = true;
     return;
   }
   if (!musicContext) {
@@ -300,7 +297,7 @@ function pauseMusic() {
   }
 }
 
-musicButton.addEventListener("click", () => {
+adminMusicToggle.addEventListener("click", () => {
   musicEnabled = !musicEnabled;
   updateMusicButton();
   if (musicEnabled) {
@@ -310,8 +307,12 @@ musicButton.addEventListener("click", () => {
     musicStatus.textContent = "Music muted.";
   }
 });
-musicTrackButton.addEventListener("click", nextMusicTrack);
 updateMusicButton();
+const autoStartMusic = () => {
+  if (musicEnabled) startMusic().catch(handleMusicError);
+};
+window.addEventListener("pointerdown", autoStartMusic, { once: true });
+window.addEventListener("keydown", autoStartMusic, { once: true });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     pauseMusic();
@@ -2600,6 +2601,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   hudDirty = true;
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = true;
+  document.querySelector("#arena-strip").hidden = true;
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
@@ -2668,6 +2670,7 @@ function showSelection() {
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = false;
+  document.querySelector("#arena-strip").hidden = false;
   endCutscene();
   clearFighters();
   updateFighterPreview(selectedFighter);
@@ -2683,6 +2686,7 @@ function showPortal() {
   arena.visible = false;
   matchActive = false;
   document.querySelector("#select-screen").hidden = true;
+  document.querySelector("#arena-strip").hidden = true;
   document.querySelector("#battle-hud").hidden = true;
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#touch-controls").hidden = true;

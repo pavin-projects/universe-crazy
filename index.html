@@ -20,16 +20,6 @@
       </div>
     </section>
     <main class="game-ui">
-      <div class="music-controls">
-        <button class="music-toggle" id="toggle-music" type="button" aria-pressed="true" aria-label="Mute music">
-          <span aria-hidden="true">♫</span>
-          <span id="music-toggle-label">Music: On</span>
-        </button>
-        <button class="music-track-button" id="next-track" type="button" aria-label="Switch to next music track">
-          <span id="music-track-label">Track 1/30 · Starlight Pulse</span>
-          <span aria-hidden="true">⏭</span>
-        </button>
-      </div>
       <p class="sr-only" id="music-status" role="status" aria-live="polite"></p>
       <div class="ko-flash" id="knockout-flash" hidden aria-live="polite" aria-atomic="true">
         <span>K.O.</span>
@@ -137,16 +127,6 @@
             <span class="pick-indicator" aria-hidden="true">✓</span>
           </button>
         </div>
-        <div class="arena-strip">
-          <div class="arena-icon" aria-hidden="true">◈</div>
-          <div class="arena-copy"><span class="fighter-type">200 PROCEDURAL ARENAS</span><strong id="arena-name">Skyforge Gate · Layout 1</strong></div>
-          <div class="arena-picker">
-            <span class="arena-status" id="arena-count">1 / 200</span>
-            <button class="arena-button" id="arena-previous" type="button" aria-label="Previous arena">←</button>
-            <button class="arena-button" id="arena-next" type="button" aria-label="Next arena">→</button>
-            <button class="arena-button arena-random" id="arena-random" type="button">Random</button>
-          </div>
-        </div>
         <div class="mode-row">
         <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. 3 CPUs</strong></div>
           <button class="secondary-button" id="toggle-mode" type="button" aria-label="Change battle mode">Change mode</button>
@@ -156,6 +136,17 @@
           <button class="primary-button" id="start-match" type="button" aria-label="Fight">FIGHT! <span aria-hidden="true">→</span></button>
         </div>
       </section>
+
+      <div class="arena-strip" id="arena-strip" hidden>
+        <div class="arena-icon" aria-hidden="true">◈</div>
+        <div class="arena-copy"><span class="fighter-type">200 PROCEDURAL ARENAS</span><strong id="arena-name">Skyforge Gate · Layout 1</strong></div>
+        <div class="arena-picker">
+          <span class="arena-status" id="arena-count">1 / 200</span>
+          <button class="arena-button" id="arena-previous" type="button" aria-label="Previous arena">←</button>
+          <button class="arena-button" id="arena-next" type="button" aria-label="Next arena">→</button>
+          <button class="arena-button arena-random" id="arena-random" type="button">Random</button>
+        </div>
+      </div>
 
       <section class="battle-hud" id="battle-hud" hidden aria-label="Match status">
         <div class="hud-player hud-player-one" id="player-one-panel">
@@ -247,7 +238,8 @@
           <div class="admin-tools" id="admin-tools" hidden>
             <button class="primary-button" id="admin-unlock-all" type="button">🔓 Unlock All 63 Fighters</button>
             <button class="secondary-button" id="admin-boss-fight" type="button">👁 Fight Entity.exe Boss</button>
-            <button class="secondary-button" id="admin-next-track" type="button">🎵 Skip Music Track</button>
+            <button class="secondary-button" id="admin-next-track" type="button">🎵 Next Track (1/30)</button>
+            <button class="secondary-button" id="admin-toggle-music" type="button">🔊 Music: On</button>
             <button class="secondary-button" id="admin-reset-unlocks" type="button">🔒 Reset Unlocks to Starters</button>
           </div>
         </div>
