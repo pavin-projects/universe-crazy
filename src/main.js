@@ -1865,7 +1865,7 @@ function createArena(index = arenaIndex) {
       const depth = directionZ === 0 ? 1.45 : 1.15;
       addMesh(arena, new THREE.BoxGeometry(width * 2, top, depth * 2), trim, [x, top / 2, z]);
       addMesh(arena, new THREE.BoxGeometry(width * 1.9, 0.035, depth * 1.9), floor, [x, top + 0.018, z]);
-      arenaSurfaces.push({ x, z, top, halfWidth: width, halfDepth: depth, stair: true });
+      arenaSurfaces.push({ x, z, top, bottom: 0, halfWidth: width, halfDepth: depth, stair: true, solid: true });
     }
     const landingDistance = 1.9 + stepCount * stepRun;
     const landingTop = stepCount * 0.22;
@@ -1875,7 +1875,7 @@ function createArena(index = arenaIndex) {
     const landingDepth = directionZ === 0 ? 1.6 : 2.1;
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 2, 0.3, landingDepth * 2), trim, [x, landingTop - 0.15, z]);
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 1.9, 0.04, landingDepth * 1.9), floor, [x, landingTop + 0.02, z]);
-    arenaSurfaces.push({ x, z, top: landingTop + 0.04, halfWidth: landingWidth, halfDepth: landingDepth });
+    arenaSurfaces.push({ x, z, top: landingTop + 0.04, bottom: Math.max(0, landingTop - 0.3), halfWidth: landingWidth, halfDepth: landingDepth, solid: true });
   }
 
   const platformCount = 2 + (layout % 5);
@@ -1892,7 +1892,7 @@ function createArena(index = arenaIndex) {
     addMesh(arena, new THREE.CylinderGeometry(0.93, 0.9, 0.05, 8), floor, [x, top - 0.025, z], [width, 1, depth]);
     const platformRing = addMesh(arena, new THREE.TorusGeometry(width * 0.72, 0.035, 6, 24), rune, [x, top + 0.01, z]);
     platformRing.rotation.x = Math.PI / 2;
-    arenaSurfaces.push({ x, z, top, halfWidth: width * 0.9, halfDepth: depth * 0.9 });
+    arenaSurfaces.push({ x, z, top, bottom: top - 0.32, halfWidth: width * 0.9, halfDepth: depth * 0.9, solid: true, round: true });
   }
 
   const crystal = material(theme.trim, 0.38, 0.35);
@@ -1956,6 +1956,55 @@ function createLimb(parent, palette, x, y, z, length, radius, rotationZ = 0) {
   parent.add(pivot);
   return pivot;
 }
+
+// Torso silhouettes are lathe profiles: [radius, height] pairs from hips to neck
+function latheFromKeys(keys, segments = 18) {
+  const curve = new THREE.SplineCurve(keys.map(([radius, y]) => new THREE.Vector2(radius, y)));
+  return new THREE.LatheGeometry(curve.getPoints(28), segments);
+}
+
+const bodyShapes = {
+  standard: {
+    torso: [[0, 0.34], [0.28, 0.42], [0.38, 0.62], [0.42, 0.9], [0.42, 1.18], [0.4, 1.42], [0.34, 1.6], [0, 1.66]],
+    headR: 0.39, armX: 0.55, armR: 0.15, armLen: 0.48, legX: 0.22, legR: 0.14, footW: 0.38, beltY: 1.12, beltZ: 0.42
+  },
+  broad: {
+    torso: [[0, 0.34], [0.34, 0.42], [0.5, 0.62], [0.58, 0.9], [0.6, 1.18], [0.56, 1.42], [0.44, 1.6], [0, 1.66]],
+    headR: 0.48, armX: 0.68, armR: 0.2, armLen: 0.48, legX: 0.22, legR: 0.19, footW: 0.46, beltY: 1.12, beltZ: 0.6
+  },
+  round: {
+    torso: [[0, 0.34], [0.36, 0.42], [0.56, 0.7], [0.6, 0.95], [0.56, 1.2], [0.5, 1.42], [0.36, 1.6], [0, 1.66]],
+    headR: 0.42, armX: 0.62, armR: 0.17, armLen: 0.46, legX: 0.26, legR: 0.18, footW: 0.42, beltY: 1.08, beltZ: 0.58
+  },
+  lanky: {
+    torso: [[0, 0.34], [0.2, 0.42], [0.27, 0.7], [0.26, 1.0], [0.24, 1.2], [0.3, 1.42], [0.24, 1.6], [0, 1.66]],
+    headR: 0.36, armX: 0.4, armR: 0.1, armLen: 0.54, legX: 0.16, legR: 0.1, footW: 0.3, beltY: 1.0, beltZ: 0.27
+  },
+  petite: {
+    torso: [[0, 0.34], [0.2, 0.42], [0.3, 0.62], [0.31, 0.86], [0.27, 1.04], [0.26, 1.2], [0.28, 1.34], [0.24, 1.5], [0, 1.56]],
+    headR: 0.46, armX: 0.36, armR: 0.1, armLen: 0.4, legX: 0.14, legR: 0.12, footW: 0.28, beltY: 1.04, beltZ: 0.3
+  },
+  hourglass: {
+    torso: [[0, 0.34], [0.3, 0.42], [0.44, 0.66], [0.4, 0.84], [0.26, 1.0], [0.26, 1.1], [0.34, 1.26], [0.36, 1.4], [0.3, 1.56], [0, 1.66]],
+    headR: 0.37, armX: 0.46, armR: 0.12, armLen: 0.46, legX: 0.18, legR: 0.13, footW: 0.32, beltY: 1.0, beltZ: 0.28,
+    skin: "#e2b08f"
+  },
+  pear: {
+    torso: [[0, 0.34], [0.34, 0.42], [0.5, 0.64], [0.48, 0.84], [0.36, 1.0], [0.26, 1.12], [0.3, 1.3], [0.32, 1.44], [0.26, 1.6], [0, 1.66]],
+    headR: 0.36, armX: 0.46, armR: 0.12, armLen: 0.46, legX: 0.26, legR: 0.16, footW: 0.4, beltY: 1.06, beltZ: 0.3,
+    skin: "#c98f6b"
+  }
+};
+
+const bodyShapeByKind = {
+  nova: "standard", tide: "standard", larry: "standard", michael: "standard", thunderbolt: "standard", discoagent: "standard",
+  titan: "broad", robert: "broad", cactusjack: "broad", flameknight: "broad", goldenknight: "broad",
+  omegabot: "broad", galaxydragon: "broad", entity: "broad",
+  glitch: "lanky", lizard: "lanky", frostbite: "lanky", shadowcat: "lanky", monkey: "lanky",
+  bob: "round", jim: "round", rocketpup: "round", laserbear: "round", neonpanda: "round",
+  rand: "petite", immy: "petite", voltbunny: "petite",
+  liz: "hourglass", cindy: "pear"
+};
 
 function createFighterVisual(kind) {
   const palette = characters[kind].palette;
@@ -2153,18 +2202,18 @@ function createFighterVisual(kind) {
     }
     addMesh(body, new THREE.OctahedronGeometry(0.21, 0), trimMat, [0, 1.52, 0.29]);
   } else {
-    const heavy = characters[kind].build === "heavy";
-    const width = heavy ? 0.58 : 0.42;
-    addMesh(body, new THREE.CapsuleGeometry(width, heavy ? 0.72 : 0.64, 5, 10), mainMat, [0, 1.08, 0]);
-    addMesh(body, new THREE.SphereGeometry(heavy ? 0.48 : 0.39, 16, 12), mainMat, [0, 1.92, 0.02]);
-    addMesh(body, new THREE.BoxGeometry(0.5, 0.19, 0.12), darkMat, [0, 1.89, 0.36]);
+    const shape = bodyShapes[bodyShapeByKind[kind] || "standard"];
+    const headMat = shape.skin ? material(shape.skin, 0.5, 0.02) : mainMat;
+    addMesh(body, latheFromKeys(shape.torso), mainMat, [0, 0, 0]);
+    addMesh(body, new THREE.SphereGeometry(shape.headR, 16, 12), headMat, [0, 1.92, 0.02]);
+    addMesh(body, new THREE.BoxGeometry(shape.headR * 1.28, 0.19, 0.12), darkMat, [0, 1.89, shape.headR - 0.03]);
     for (const side of [-1, 1]) {
-      addBlinkingEye(new THREE.SphereGeometry(0.07, 9, 8), trimMat, [side * 0.14, 1.9, 0.43]);
-      animatedLimbs.push(createLimb(body, palette, side * (heavy ? 0.68 : 0.55), 1.14, 0, 0.48, heavy ? 0.2 : 0.15, side * -0.12));
-      animatedLimbs.push(createLimb(body, palette, side * 0.22, 0.4, 0, 0.38, heavy ? 0.19 : 0.14, side * 0.04));
-      addMesh(body, new THREE.BoxGeometry(0.38, 0.18, 0.45), darkMat, [side * 0.22, 0.12, 0.08]);
+      addBlinkingEye(new THREE.SphereGeometry(0.07, 9, 8), trimMat, [side * shape.headR * 0.36, 1.9, shape.headR + 0.04]);
+      animatedLimbs.push(createLimb(body, palette, side * shape.armX, 1.14, 0, shape.armLen, shape.armR, side * -0.12));
+      animatedLimbs.push(createLimb(body, palette, side * shape.legX, 0.4, 0, 0.66 - 2 * shape.legR, shape.legR, side * 0.04));
+      addMesh(body, new THREE.BoxGeometry(shape.footW, 0.18, 0.45), darkMat, [side * shape.legX, 0.12, 0.08]);
     }
-    addMesh(body, new THREE.TorusGeometry(0.24, 0.055, 8, 20), trimMat, [0, 1.12, 0.39]);
+    addMesh(body, new THREE.TorusGeometry(0.24, 0.055, 8, 20), trimMat, [0, shape.beltY, shape.beltZ]);
     if (kind === "nova") {
       const creamFurMat = material("#fff6e8", 0.35, 0.04);
       addMesh(body, new THREE.SphereGeometry(0.28, 16, 12), creamFurMat, [0, 1.18, 0.28], [1.1, 0.88, 0.52]);
@@ -2747,10 +2796,13 @@ function launchProjectile(fighter, options = {}) {
     life = 1.5,
     damage = 9,
     force = 4.2,
+    vy = null,
     vz = 0,
     offsetZ = 0,
     shape = "sphere",
-    hazard = false
+    hazard = false,
+    boomerang = false,
+    homing = false
   } = options;
   const geometry = shape === "star"
     ? new THREE.OctahedronGeometry(radius, 1)
@@ -2773,14 +2825,17 @@ function launchProjectile(fighter, options = {}) {
   projectiles.push({
     mesh: projectile,
     owner: fighter,
+    speed,
     vx: fighter.facing * speed,
-    vy: hazard ? 4.2 : 0,
+    vy: vy !== null ? vy : (hazard ? 4.2 : 0),
     vz,
     life,
     damage,
     force,
     hitRadius: radius + 0.55,
     hazard,
+    boomerang,
+    homing,
     armTimer: hazard ? 0.45 : 0,
     power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
   });
@@ -2866,6 +2921,209 @@ function spawnFireBreath(fighter) {
   }
 }
 
+function spawnSkyUppercut(fighter, color, damage, force, lift = 10) {
+  fighter.vy = lift;
+  fighter.vx = fighter.facing * 5.2;
+  fighter.grounded = false;
+  spawnAbilityRing(fighter, color, 0.38);
+  const target = nearestOpponent(fighter);
+  if (target && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 2.9 && Math.abs(target.y - fighter.y) < 2.6) {
+    hitTarget(fighter, target, damage, force);
+    target.vy = Math.max(target.vy, lift * 0.92);
+    target.grounded = false;
+  }
+}
+
+function spawnShieldBurst(fighter, color, healAmount, radius, damage, force) {
+  fighter.invulnerable = Math.max(fighter.invulnerable, 1.35);
+  fighter.hp = Math.min(100, fighter.hp + healAmount);
+  fighter.damage = Math.max(0, fighter.damage - healAmount * 0.6);
+  hudDirty = true;
+  applyAreaAbility(fighter, { radius, damage, force, color });
+}
+
+function spawnMeteorDrop(fighter, color, damage, force) {
+  fighter.vy = 11;
+  fighter.vx = fighter.facing * 7.2;
+  fighter.grounded = false;
+  launchProjectile(fighter, {
+    shape: "star",
+    color,
+    emissive: color,
+    radius: 0.46,
+    speed: 9.5,
+    vy: -4.2,
+    life: 1.4,
+    damage,
+    force
+  });
+  spawnAbilityRing(fighter, color, 0.4);
+}
+
+const uniqueSpecialMechanics = {
+  bumble: (f) => launchProjectile(f, { color: "#ffe36f", emissive: "#ff9d35", speed: 15, damage: 10, force: 4.8 }),
+  robot: (f, b, p) => {
+    f.vx = f.facing * 14.5;
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.4) hitTarget(f, t, 13 * p * b, 6.8);
+    spawnAbilityRing(f, "#53e9f4", 0.32);
+  },
+  nova: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ff9fea", emissive: "#bf5aff", radius: 0.22, speed: 11, life: 1.35, damage: 6.5, force: 3.6, vz: s * 2.8, offsetZ: s * 0.13 })),
+  titan: (f) => applyAreaAbility(f, { radius: 3.9, damage: 14.5, force: 7.5, color: "#ff8b4c" }),
+  glitch: (f, b, p) => {
+    const t = nearestOpponent(f);
+    spawnAbilityRing(f, "#ff5dcc", 0.3);
+    if (t) {
+      f.x = THREE.MathUtils.clamp(t.x - t.facing * 1.2, -floorRadius + 1, floorRadius - 1);
+      f.z = THREE.MathUtils.clamp(t.z, -floorRadius + 1, floorRadius - 1);
+      f.facing = Math.sign(t.x - f.x) || f.facing;
+      f.visual.position.set(f.x, f.y, f.z);
+      spawnAbilityRing(f, "#ff5dcc", 0.3);
+      if (Math.hypot(t.x - f.x, t.z - f.z) < 2.2) hitTarget(f, t, 13 * p * b, 5.7);
+    } else f.vx = f.facing * 9;
+  },
+  tide: (f) => launchProjectile(f, { shape: "wave", color: "#80f8e6", emissive: "#38c9ff", radius: 0.62, speed: 8.5, life: 1.7, damage: 13, force: 7.4 }),
+  frog: (f, b, p) => {
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 5.6) {
+      spawnTongueEffect(f, t);
+      hitTarget(f, t, 10 * p * b, 3.6);
+      t.vx += Math.sign(f.x - t.x) * 4.4;
+    }
+  },
+  dinosaur: (f) => spawnFireBreath(f),
+  monkey: (f) => launchProjectile(f, { shape: "banana", color: "#ffe135", emissive: "#b89600", radius: 0.34, speed: 6.4, life: 7, damage: 6, force: 4.5, hazard: true }),
+  lizard: (f, b, p) => {
+    const t = nearestOpponent(f);
+    f.vx = f.facing * 6;
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 5.8) {
+      spawnTongueEffect(f, t);
+      hitTarget(f, t, 11.5 * p * b, 4.8);
+    }
+  },
+  ghost: (f) => {
+    f.invulnerable = Math.max(f.invulnerable, 1.1);
+    f.vy = 6.5;
+    applyAreaAbility(f, { radius: 3.6, damage: 11, force: 5.2, color: "#7ff7ff" });
+  },
+  mrstar: (f) => [-2, -1, 0, 1, 2].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffd646", emissive: "#ff9b3d", radius: 0.2, speed: 12, life: 1.4, damage: 5.5, force: 3.2, vz: s * 1.9 })),
+  stubby: (f, b, p) => spawnSkyUppercut(f, "#ff9642", 11 * p * b, 5.4, 9.5),
+  stickman: (f) => launchProjectile(f, { color: "#72e8ff", emissive: "#ffcf66", radius: 0.24, speed: 13.5, life: 1.9, damage: 10.5, force: 4.5, boomerang: true }),
+  larry: (f, b, p) => {
+    f.vx = f.facing * 13;
+    f.vy = 4.2;
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.2) hitTarget(f, t, 12.5 * p * b, 6.2);
+    spawnAbilityRing(f, "#74d4ff", 0.32);
+  },
+  bob: (f) => { f.vy = 7.5; applyAreaAbility(f, { radius: 4.2, damage: 15, force: 7.8, color: "#ffaa44" }); },
+  michael: (f) => launchProjectile(f, { color: "#8ef0ff", emissive: "#ff5c8d", radius: 0.2, speed: 19, life: 1.1, damage: 12, force: 5.6 }),
+  rand: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { color: "#ff4d6d", emissive: "#ffd166", radius: 0.26, speed: 10.5, vy: 2.2, vz: s * 3.1, life: 1.4, damage: 7.5, force: 4.2 })),
+  robert: (f, b, p) => spawnShieldBurst(f, "#d4e6ff", 10, 3.4, 12 * p * b, 6.4),
+  bopper: (f) => spawnMeteorDrop(f, "#ffe28a", 14, 7.0),
+  pewstickman: (f) => [0, 0.18].forEach((oz, i) => launchProjectile(f, { color: "#4cf2ff", emissive: "#ff59b8", radius: 0.18, speed: 18 + i * 3, life: 1.2, damage: 7.5, force: 4.0, offsetZ: oz })),
+  liz: (f, b, p) => spawnSkyUppercut(f, "#ffe0f4", 11.5 * p * b, 5.8, 10.5),
+  cindy: (f) => launchProjectile(f, { shape: "star", color: "#fff0a8", emissive: "#ff7ad9", radius: 0.3, speed: 9.5, life: 2.2, damage: 11.5, force: 5.0, homing: true }),
+  munchy: (f, b, p) => {
+    f.hp = Math.min(100, f.hp + 12);
+    hudDirty = true;
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 5.2) {
+      spawnTongueEffect(f, t);
+      hitTarget(f, t, 12 * p * b, 4.2);
+    }
+  },
+  cryptokin: (f) => applyAreaAbility(f, { radius: 4.8, damage: 13.5, force: 6.0, color: "#b774ff", pull: true }),
+  fred: (f, b, p) => {
+    f.vx = f.facing * 11;
+    spawnAbilityRing(f, "#63b3ff", 0.35);
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.2) hitTarget(f, t, 14 * p * b, 6.4);
+  },
+  alieny: (f) => launchProjectile(f, { color: "#c7ff9c", emissive: "#7d5cff", radius: 0.34, speed: 8.8, life: 2.4, damage: 12, force: 5.5, homing: true }),
+  dops: (f) => launchProjectile(f, { shape: "wave", color: "#d4fff8", emissive: "#4cd9c4", radius: 0.56, speed: 10.5, life: 1.6, damage: 12.5, force: 6.8 }),
+  cartoonguy: (f) => launchProjectile(f, { shape: "banana", color: "#ffffff", emissive: "#ffdf6b", radius: 0.38, speed: 7.8, life: 7.5, damage: 8, force: 5.5, hazard: true }),
+  lostapple: (f) => spawnMeteorDrop(f, "#e03131", 13.5, 6.8),
+  jim: (f) => launchProjectile(f, { shape: "wave", color: "#93c5fd", emissive: "#3b82f6", radius: 0.52, speed: 9.2, life: 1.8, damage: 11.5, force: 6.2 }),
+  immy: (f, b, p) => {
+    f.vy = 7.8;
+    f.vx = f.facing * 11.5;
+    spawnAbilityRing(f, "#5ff2ff", 0.34);
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.2) hitTarget(f, t, 12 * p * b, 5.6);
+  },
+  pixelpal: (f) => [0, 1].forEach((i) => launchProjectile(f, { color: i ? "#ff6ec7" : "#7cf7ff", emissive: "#7c5cff", radius: 0.24, speed: 13 + i * 2, life: 1.4, damage: 7, force: 3.8, offsetZ: (i - 0.5) * 0.4 })),
+  flameknight: (f) => { spawnFireBreath(f); spawnShieldBurst(f, "#ffd166", 6, 3.0, 9, 4.8); },
+  frostbite: (f) => {
+    launchProjectile(f, { shape: "wave", color: "#e6fbff", emissive: "#38b6ff", radius: 0.58, speed: 8.2, life: 1.8, damage: 11, force: 5.2 });
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 4.2) t.slipTimer = 0.65;
+  },
+  shadowcat: (f, b, p) => {
+    const t = nearestOpponent(f);
+    if (t) {
+      f.x = THREE.MathUtils.clamp(t.x - t.facing * 1.1, -floorRadius + 1, floorRadius - 1);
+      f.z = THREE.MathUtils.clamp(t.z, -floorRadius + 1, floorRadius - 1);
+      f.visual.position.set(f.x, f.y, f.z);
+      hitTarget(f, t, 14 * p * b, 6.2);
+    }
+    spawnAbilityRing(f, "#c77dff", 0.3);
+  },
+  thunderbolt: (f) => {
+    f.vx = f.facing * 16.5;
+    spawnAbilityRing(f, "#ffd43b", 0.28);
+    applyAreaAbility(f, { radius: 3.2, damage: 11.5, force: 5.8, color: "#4dabf7" });
+  },
+  captainclaw: (f, b, p) => spawnSkyUppercut(f, "#ff8c42", 13.5 * p * b, 6.4, 9.0),
+  astroduck: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffd95e", emissive: "#ff8533", radius: 0.28, speed: 11.5, life: 1.7, damage: 8.5, force: 4.5, vz: s * 2.2, boomerang: true })),
+  cyberninja: (f) => launchProjectile(f, { shape: "star", color: "#38f2af", emissive: "#ff477e", radius: 0.26, speed: 17, life: 1.3, damage: 13, force: 5.8 }),
+  slimeking: (f) => { f.vy = 9.5; applyAreaAbility(f, { radius: 4.4, damage: 13.5, force: 7.2, color: "#4cd964" }); },
+  rocketpup: (f) => launchProjectile(f, { color: "#ff595e", emissive: "#fff0d6", radius: 0.3, speed: 12, life: 2.2, damage: 12, force: 5.8, homing: true }),
+  magmaorb: (f) => { spawnFireBreath(f); applyAreaAbility(f, { radius: 3.4, damage: 10, force: 5.0, color: "#ff5722" }); },
+  clockwork: (f) => launchProjectile(f, { shape: "wave", color: "#fff0bd", emissive: "#d49b4b", radius: 0.35, speed: 12.5, life: 2.0, damage: 11.5, force: 5.2, boomerang: true }),
+  cosmicowl: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffe28a", emissive: "#7c65b8", radius: 0.24, speed: 10.5, life: 2.0, damage: 7.5, force: 4.0, vz: s * 2.1, homing: s === 0 })),
+  neonpanda: (f, b, p) => spawnShieldBurst(f, "#5bf2ff", 14, 4.0, 13 * p * b, 7.0),
+  piratebones: (f, b, p) => {
+    f.vx = f.facing * 12;
+    spawnAbilityRing(f, "#ff4d6d", 0.35);
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.4) hitTarget(f, t, 14.5 * p * b, 6.8);
+  },
+  cactusjack: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { color: "#d8f3dc", emissive: "#3da35d", radius: 0.2, speed: 15, life: 1.2, damage: 7.5, force: 4.2, vz: s * 2.4 })),
+  bubblepop: (f) => launchProjectile(f, { color: "#74e8ff", emissive: "#ff8ef2", radius: 0.48, speed: 7.5, life: 2.4, damage: 11.5, force: 6.5, homing: true }),
+  laserbear: (f) => launchProjectile(f, { color: "#ff5252", emissive: "#ffe066", radius: 0.32, speed: 20, life: 1.0, damage: 15, force: 7.2 }),
+  turbosnail: (f) => launchProjectile(f, { shape: "wave", color: "#ff9e5e", emissive: "#66e4ee", radius: 0.42, speed: 14, life: 1.9, damage: 12, force: 6.0, boomerang: true }),
+  voltbunny: (f, b, p) => spawnSkyUppercut(f, "#5cf2ff", 12 * p * b, 5.8, 11.5),
+  goldenknight: (f, b, p) => spawnShieldBurst(f, "#ffd43b", 15, 4.2, 14.5 * p * b, 7.4),
+  cheesewizard: (f) => launchProjectile(f, { shape: "banana", color: "#ffd93b", emissive: "#ff922b", radius: 0.4, speed: 7.2, life: 8, damage: 8.5, force: 5.5, hazard: true }),
+  discoagent: (f) => [-2, 0, 2].forEach((s) => launchProjectile(f, { shape: "star", color: "#d966ff", emissive: "#5cf2ff", radius: 0.25, speed: 12, life: 1.6, damage: 8, force: 4.4, vz: s * 1.8 })),
+  ironbeaver: (f, b, p) => spawnSkyUppercut(f, "#e6ccb2", 13 * p * b, 6.2, 9.2),
+  starjelly: (f) => applyAreaAbility(f, { radius: 4.5, damage: 12.5, force: 6.0, color: "#7cf2ff", pull: true }),
+  cometkid: (f) => spawnMeteorDrop(f, "#ff884d", 14.5, 7.2),
+  spookybat: (f, b, p) => {
+    f.vy = 8.0;
+    f.vx = f.facing * 12;
+    spawnAbilityRing(f, "#ff5c8a", 0.32);
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.4) hitTarget(f, t, 12.5 * p * b, 5.5);
+  },
+  megatoad: (f, b, p) => {
+    f.vy = 8.5;
+    const t = nearestOpponent(f);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 6.2) {
+      spawnTongueEffect(f, t);
+      hitTarget(f, t, 13 * p * b, 5.2);
+      t.vx += Math.sign(f.x - t.x) * 5.0;
+    }
+  },
+  galaxydragon: (f) => { spawnFireBreath(f); spawnMeteorDrop(f, "#ff4d6d", 13, 6.8); },
+  omegabot: (f) => {
+    applyAreaAbility(f, { radius: 4.6, damage: 12, force: 5.5, color: "#66e4ee", pull: true });
+    launchProjectile(f, { color: "#ff3b30", emissive: "#66e4ee", radius: 0.34, speed: 18, life: 1.3, damage: 14, force: 6.8 });
+  },
+  entity: (f) => applyAreaAbility(f, { radius: 5.0, damage: 15, force: 6.5, color: "#b774ff", pull: true })
+};
+
 function useSpecialAbility(fighter) {
   const character = characters[fighter.kind];
   document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
@@ -2874,118 +3132,9 @@ function useSpecialAbility(fighter) {
   cutsceneFocusFighter = fighter;
   cutsceneZoomTimer = 0.68;
   const boost = fighter.powerBoost > 0 ? 1.7 : 1;
-
-  switch (character.special) {
-    case "sting":
-      launchProjectile(fighter, { color: "#ffe36f", emissive: "#ff9d35", damage: 10, force: 4.8 });
-      break;
-    case "dash": {
-      fighter.vx = fighter.facing * 14;
-      const target = nearestOpponent(fighter);
-      if (target && (target.x - fighter.x) * fighter.facing > -0.5
-        && Math.abs(target.z - fighter.z) < 1.9
-        && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 3.3) {
-        hitTarget(fighter, target, 13 * character.power * boost, 6.8);
-      }
-      spawnAbilityRing(fighter, "#53e9f4", 0.3);
-      break;
-    }
-    case "starburst":
-      [-1, 0, 1].forEach((spread) => launchProjectile(fighter, {
-        shape: "star",
-        color: "#ff9fea",
-        emissive: "#bf5aff",
-        radius: 0.22,
-        speed: 11,
-        life: 1.35,
-        damage: 6.5,
-        force: 3.6,
-        vz: spread * 2.8,
-        offsetZ: spread * 0.13
-      }));
-      break;
-    case "quake":
-      applyAreaAbility(fighter, { radius: 3.7, damage: 14, force: 7.2, color: "#ff8b4c" });
-      break;
-    case "phase": {
-      const target = nearestOpponent(fighter);
-      spawnAbilityRing(fighter, "#ff5dcc", 0.3);
-      if (!target) {
-        fighter.vx = fighter.facing * 9;
-        break;
-      }
-      fighter.x = THREE.MathUtils.clamp(target.x - target.facing * 1.2, -floorRadius + 1, floorRadius - 1);
-      fighter.z = THREE.MathUtils.clamp(target.z, -floorRadius + 1, floorRadius - 1);
-      fighter.facing = Math.sign(target.x - fighter.x) || fighter.facing;
-      fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
-      spawnAbilityRing(fighter, "#ff5dcc", 0.3);
-      if (Math.hypot(target.x - fighter.x, target.z - fighter.z) < 2.1) {
-        hitTarget(fighter, target, 13 * character.power * boost, 5.7);
-      }
-      break;
-    }
-    case "wave":
-      launchProjectile(fighter, {
-        shape: "wave",
-        color: "#80f8e6",
-        emissive: "#38c9ff",
-        radius: 0.62,
-        speed: 8.5,
-        life: 1.7,
-        damage: 13,
-        force: 7.4
-      });
-      break;
-    case "tongue": {
-      const target = fighters
-        .filter((opponent) => opponent !== fighter && !opponent.eliminated && opponent.respawn <= 0)
-        .filter((opponent) => {
-          const dx = opponent.x - fighter.x;
-          const dz = opponent.z - fighter.z;
-          return dx * fighter.facing > 0 && Math.abs(dz) < 1.8 && Math.hypot(dx, dz) < 5.4;
-        })
-        .sort((a, b) => Math.hypot(a.x - fighter.x, a.z - fighter.z) - Math.hypot(b.x - fighter.x, b.z - fighter.z))[0];
-      if (target) {
-        spawnTongueEffect(fighter, target);
-        hitTarget(fighter, target, 10 * character.power * boost, 3.6);
-        target.vx += Math.sign(fighter.x - target.x) * 4.2;
-        target.vz += Math.sign(fighter.z - target.z || 1) * 2;
-      }
-      break;
-    }
-    case "fire":
-      spawnFireBreath(fighter);
-      break;
-    case "bite": {
-      fighter.vx = fighter.facing * 10.5;
-      spawnAbilityRing(fighter, "#63b3ff", 0.34);
-      const target = nearestOpponent(fighter);
-      if (target && (target.x - fighter.x) * fighter.facing > -0.5
-        && Math.abs(target.z - fighter.z) < 1.9
-        && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 3.1) {
-        hitTarget(fighter, target, 13.5 * character.power * boost, 6.2);
-      }
-      break;
-    }
-    case "banana":
-      launchProjectile(fighter, {
-        shape: "banana",
-        color: "#ffe135",
-        emissive: "#b89600",
-        radius: 0.34,
-        speed: 6.4,
-        life: 7,
-        damage: 6,
-        force: 4.5,
-        hazard: true
-      });
-      break;
-    case "void":
-      applyAreaAbility(fighter, { radius: 4.6, damage: 13, force: 5.6, color: "#b774ff", pull: true });
-      break;
-    default:
-      throw new Error(`Unknown special ability "${character.special}" for ${character.name}.`);
-  }
+  const handler = uniqueSpecialMechanics[fighter.kind];
+  if (!handler) throw new Error(`Unknown special ability for ${character.name}.`);
+  handler(fighter, boost, character.power);
 }
 
 function spawnImpact(target, heavy) {
@@ -3158,7 +3307,7 @@ function attack(fighter, target, special = false) {
       .filter((opponent) => {
         const dx = opponent.x - fighter.x;
         const dz = opponent.z - fighter.z;
-        return Math.hypot(dx, dz) < reach && Math.abs(dz) < 1.75 && dx * fighter.facing > -0.65;
+        return Math.hypot(dx, dz) < reach && Math.abs(dz) < 1.75 && dx * fighter.facing > -0.65 && Math.abs(opponent.y - fighter.y) < 1.5;
       })
       .sort((a, b) => (a.x - fighter.x) ** 2 + (a.z - fighter.z) ** 2 - (b.x - fighter.x) ** 2 - (b.z - fighter.z) ** 2)[0]
       || nearestOpponent(fighter);
@@ -3168,7 +3317,8 @@ function attack(fighter, target, special = false) {
   const dz = target.z - fighter.z;
   const inReach = Math.hypot(dx, dz) < 2.15;
   const inFront = dx * fighter.facing > -0.65;
-  if (inReach && Math.abs(dz) < 1.75 && inFront) {
+  const inHeight = Math.abs(target.y - fighter.y) < 1.5;
+  if (inReach && Math.abs(dz) < 1.75 && inFront && inHeight) {
     const boost = fighter.powerBoost > 0 ? 1.7 : 1;
     hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 4.4);
   }
@@ -3291,6 +3441,12 @@ function readInput(fighter, index, delta) {
   if (special) attack(fighter, null, true);
 }
 
+// Round surfaces (cylinder pillars) use a radial check; box surfaces (stairs, landings) use axis checks.
+function isOverSurface(surface, x, z, margin) {
+  if (surface.round) return Math.hypot(x - surface.x, z - surface.z) <= surface.halfWidth + margin;
+  return Math.abs(x - surface.x) <= surface.halfWidth + margin && Math.abs(z - surface.z) <= surface.halfDepth + margin;
+}
+
 function updateFighter(fighter, index, delta, elapsed) {
   if (fighter.eliminated) return;
   updateSpeechBubble(fighter, delta, elapsed);
@@ -3372,15 +3528,17 @@ function updateFighter(fighter, index, delta, elapsed) {
     document.querySelector("#screen-reader-status").textContent = "Secret power-up collected. Your attacks are stronger for eight seconds.";
   }
 
-  const edgeDistance = Math.hypot(fighter.x, fighter.z * 1.08);
+  const fighterBodyRadius = 0.42;
+  const fighterHeight = 1.85;
   fighter.grounded = false;
+
+  // Step up stairs smoothly while grounded
   if (wasGrounded) {
     const steppedSurface = arenaSurfaces.find((surface) =>
       surface.stair &&
       surface.top > previousY &&
-      surface.top <= previousY + 0.23 &&
-      Math.abs(fighter.x - surface.x) <= surface.halfWidth + 0.18 &&
-      Math.abs(fighter.z - surface.z) <= surface.halfDepth + 0.18
+      surface.top <= previousY + 0.25 &&
+      isOverSurface(surface, fighter.x, fighter.z, 0.18)
     );
     if (steppedSurface) {
       fighter.y = steppedSurface.top;
@@ -3388,12 +3546,13 @@ function updateFighter(fighter, index, delta, elapsed) {
       fighter.grounded = true;
     }
   }
+
+  // Land on top of solid platforms/stairs (no clipping through from above)
   if (fighter.vy <= 0) {
     const landedSurface = arenaSurfaces.find((surface) =>
-      previousY >= surface.top &&
+      previousY >= surface.top - 0.14 &&
       fighter.y <= surface.top &&
-      Math.abs(fighter.x - surface.x) <= surface.halfWidth + 0.28 &&
-      Math.abs(fighter.z - surface.z) <= surface.halfDepth + 0.28
+      isOverSurface(surface, fighter.x, fighter.z, 0.26)
     );
     if (landedSurface) {
       fighter.y = landedSurface.top;
@@ -3401,10 +3560,70 @@ function updateFighter(fighter, index, delta, elapsed) {
       fighter.grounded = true;
     }
   }
-  if (!fighter.grounded && edgeDistance <= floorRadius && fighter.y <= 0.08) {
+
+  // Solid side-wall & underside hitboxes on raised surfaces so fighters cannot clip through blocks or platforms
+  for (const surface of arenaSurfaces) {
+    if (!surface.solid) continue;
+    const offsetX = fighter.x - surface.x;
+    const offsetZ = fighter.z - surface.z;
+    const radialDistance = surface.round ? Math.hypot(offsetX, offsetZ) || 0.001 : 0;
+    const overlapX = surface.round
+      ? surface.halfWidth + fighterBodyRadius - radialDistance
+      : surface.halfWidth + fighterBodyRadius - Math.abs(offsetX);
+    const overlapZ = surface.round
+      ? overlapX
+      : surface.halfDepth + fighterBodyRadius - Math.abs(offsetZ);
+    if (overlapX <= 0 || overlapZ <= 0) continue;
+
+    if (fighter.vy > 0 && previousY + fighterHeight <= surface.bottom + 0.08 && fighter.y + fighterHeight > surface.bottom) {
+      fighter.y = surface.bottom - fighterHeight;
+      fighter.vy = 0;
+      continue;
+    }
+
+    if (fighter.y < surface.top - 0.25 && fighter.y + fighterHeight > surface.bottom + 0.05) {
+      if (surface.round) {
+        const normalX = offsetX / radialDistance;
+        const normalZ = offsetZ / radialDistance;
+        fighter.x += normalX * overlapX;
+        fighter.z += normalZ * overlapX;
+        if (fighter.vx * normalX < 0) fighter.vx = 0;
+        if (fighter.vz * normalZ < 0) fighter.vz = 0;
+      } else if (overlapX < overlapZ) {
+        const pushDir = fighter.x >= surface.x ? 1 : -1;
+        fighter.x += pushDir * overlapX;
+        if (fighter.vx * pushDir < 0) fighter.vx = 0;
+      } else {
+        const pushDir = fighter.z >= surface.z ? 1 : -1;
+        fighter.z += pushDir * overlapZ;
+        if (fighter.vz * pushDir < 0) fighter.vz = 0;
+      }
+    }
+  }
+
+  // Solid main arena floor hitbox (cannot fall/clip through ground)
+  const edgeDistance = Math.hypot(fighter.x, fighter.z);
+  if (edgeDistance <= floorRadius && fighter.y <= 0.08 && previousY >= -0.45) {
     fighter.y = 0.08;
-    fighter.vy = 0;
+    fighter.vy = Math.max(0, fighter.vy);
     fighter.grounded = true;
+  }
+
+  // Fighter-to-fighter solid body separation hitbox
+  for (const other of fighters) {
+    if (other === fighter || other.eliminated || other.respawn > 0 || other.portalEntry > 0) continue;
+    if (Math.abs(fighter.y - other.y) > 1.45) continue;
+    const dx = fighter.x - other.x;
+    const dz = fighter.z - other.z;
+    const dist = Math.hypot(dx, dz);
+    const minSep = 0.86;
+    if (dist > 0.001 && dist < minSep) {
+      const push = (minSep - dist) * 0.5;
+      fighter.x += (dx / dist) * push;
+      fighter.z += (dz / dist) * push;
+      other.x -= (dx / dist) * push;
+      other.z -= (dz / dist) * push;
+    }
   }
 
   if (fighter.y < -2.8 || edgeDistance > floorRadius + 1.35) {
@@ -3462,10 +3681,16 @@ function updateProjectiles(delta) {
     projectile.life -= delta;
     if (projectile.hazard) {
       projectile.armTimer = Math.max(0, projectile.armTimer - delta);
-      if (projectile.mesh.position.y > 0.16) {
+      const groundLevel = arenaSurfaces.reduce((highest, surface) => {
+        if (isOverSurface(surface, projectile.mesh.position.x, projectile.mesh.position.z, 0)) {
+          return Math.max(highest, surface.top + 0.1);
+        }
+        return highest;
+      }, 0.16);
+      if (projectile.mesh.position.y > groundLevel) {
         projectile.vy -= 18 * delta;
         projectile.mesh.position.x += projectile.vx * delta;
-        projectile.mesh.position.y = Math.max(0.16, projectile.mesh.position.y + projectile.vy * delta);
+        projectile.mesh.position.y = Math.max(groundLevel, projectile.mesh.position.y + projectile.vy * delta);
         projectile.mesh.position.z += projectile.vz * delta;
       } else {
         projectile.vx *= Math.exp(-8 * delta);
@@ -3499,9 +3724,32 @@ function updateProjectiles(delta) {
         }
       }
     } else {
+      if (projectile.boomerang) {
+        projectile.vx -= Math.sign(projectile.owner.facing || 1) * 18 * delta;
+      }
+      if (projectile.homing) {
+        const target = nearestOpponent(projectile.owner);
+        if (target) {
+          const dx = target.x - projectile.mesh.position.x;
+          const dz = target.z - projectile.mesh.position.z;
+          const d = Math.hypot(dx, dz) || 1;
+          projectile.vx = THREE.MathUtils.lerp(projectile.vx, (dx / d) * projectile.speed, delta * 4);
+          projectile.vz = THREE.MathUtils.lerp(projectile.vz, (dz / d) * projectile.speed, delta * 4);
+        }
+      }
       projectile.mesh.position.x += projectile.vx * delta;
+      projectile.mesh.position.y += (projectile.vy || 0) * delta;
       projectile.mesh.position.z += projectile.vz * delta;
       projectile.mesh.rotation.y += delta * 4;
+      const hitWall = arenaSurfaces.some((surface) =>
+        surface.solid
+        && projectile.mesh.position.y >= surface.bottom
+        && projectile.mesh.position.y <= surface.top
+        && isOverSurface(surface, projectile.mesh.position.x, projectile.mesh.position.z, 0)
+      );
+      if (hitWall || projectile.mesh.position.y <= 0.1) {
+        projectile.life = 0;
+      }
       for (const target of fighters) {
         if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
         const dx = projectile.mesh.position.x - target.x;
@@ -3605,11 +3853,16 @@ function updateCamera(delta) {
   const spreadZ = activeFighters.length > 1
     ? Math.max(...activeFighters.map((fighter) => fighter.z)) - Math.min(...activeFighters.map((fighter) => fighter.z))
     : 0;
-  const targetX = THREE.MathUtils.clamp(centerX * 0.42, -4.5, 4.5);
-  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 1.7, delta) + (Math.random() - 0.5) * cameraShake;
+  const player = fighters[0];
+  const playerAlive = player && !player.eliminated;
+  const followX = playerAlive ? player.x : centerX;
+  const followZ = playerAlive ? player.z : 0;
+  const targetX = THREE.MathUtils.clamp(followX * 0.6, -6, 6);
+  const targetZ = THREE.MathUtils.clamp(followZ * 0.5, -3, 3);
+  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 2.4, delta) + (Math.random() - 0.5) * cameraShake;
   camera.position.y = THREE.MathUtils.damp(camera.position.y, 11.2, 2, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 1.5, delta);
-  camera.lookAt(targetX * 0.68, 1.35, 0);
+  camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + targetZ + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 2, delta);
+  camera.lookAt(targetX * 0.68, 1.35, targetZ * 0.4);
 }
 
 function animatePortal(elapsed, delta) {
@@ -3801,20 +4054,6 @@ updateArenaLabel();
 refreshUnlockUI();
 updateControlsHint();
 
-document.querySelector("#roll-unlock").addEventListener("click", () => {
-  const unlocked = rollRareUnlock(1.35);
-  if (unlocked) {
-    const info = characters[unlocked];
-    document.querySelector("#preview-note").textContent = `🎉 UNLOCKED ${info.name} (${info.rarity})! Special: ${info.specialName} — ${info.specialDescription}`;
-    document.querySelector(`[data-fighter="${unlocked}"]`)?.click();
-  } else {
-    const remaining = unlockableCharacterIds.filter((kind) => !unlockedFighters.has(kind)).length;
-    document.querySelector("#preview-note").textContent = remaining
-      ? `No drop this roll — ${remaining} rare fighters still locked! Keep rolling or win matches!`
-      : "All 63 fighters are unlocked!";
-  }
-});
-
 const adminModal = document.querySelector("#admin-modal");
 const adminGate = document.querySelector("#admin-gate");
 const adminTools = document.querySelector("#admin-tools");
@@ -3823,7 +4062,7 @@ const adminStatus = document.querySelector("#admin-status");
 let adminAuthorized = false;
 
 function tryUnlockAdmin() {
-  if (adminCodeInput.value.trim() === "2058") {
+  if (adminCodeInput.value.trim() === "2015") {
     adminAuthorized = true;
     adminGate.hidden = true;
     adminTools.hidden = false;
@@ -3908,7 +4147,7 @@ document.querySelectorAll(".fighter-card").forEach((card) => {
     if (!isFighterUnlocked(kind)) {
       const info = characters[kind];
       const chancePct = Math.round((info.dropChance || 0.1) * 1000) / 10;
-      document.querySelector("#preview-note").textContent = `🔒 ${info.name} is ${info.rarity} (${chancePct}% rare drop). Win matches or use Mystery Roll to unlock!`;
+      document.querySelector("#preview-note").textContent = `🔒 ${info.name} is ${info.rarity} (${chancePct}% rare drop). Win matches to unlock!`;
       return;
     }
     selectedFighter = kind;

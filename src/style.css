@@ -77,8 +77,8 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .preview-note { margin: 3px 0 0; color: #b6b5d0; font-size: .71rem; }
 .unlock-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
 .unlock-progress { padding: 5px 10px; border: 1px solid #8d78f566; border-radius: 99px; background: #1d1a3b; color: #ffe08b; font-size: .66rem; font-weight: 800; letter-spacing: .12em; }
-.roll-unlock-button { min-height: 32px !important; padding: 0 11px !important; font-size: .72rem !important; border-color: #ffd16688 !important; color: #ffe3a0 !important; }
-.admin-open-button { min-height: 32px !important; padding: 0 11px !important; font-size: .72rem !important; border-color: #66e4ee88 !important; color: #bdf6ff !important; }
+.admin-open-button { position: fixed; z-index: 12; right: 12px; bottom: 12px; width: 34px; height: 34px; display: grid; place-items: center; padding: 0; border: 1px solid #66e4ee55; border-radius: 50%; background: #101329cc; color: #bdf6ff; font-size: 1rem; line-height: 1; opacity: .55; cursor: pointer; pointer-events: auto; transition: opacity .15s; }
+.admin-open-button:hover, .admin-open-button:focus-visible { opacity: 1; }
 .admin-modal { position: fixed; z-index: 18; inset: 0; display: grid; place-items: center; padding: 20px; background: #070914cc; pointer-events: auto; }
 .admin-card { display: grid; gap: 12px; width: min(400px, 100%); padding: 22px; border: 1px solid #66e4ee88; border-radius: 20px; background: #101329f7; box-shadow: 0 20px 80px #000c; }
 .admin-card h2 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: 1.5rem; }
