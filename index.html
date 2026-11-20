@@ -159,25 +159,6 @@
         <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. 5 CPUs</strong></div>
           <button class="secondary-button" id="toggle-mode" type="button" aria-label="Change battle mode">Change mode</button>
         </div>
-        <div class="quality-row">
-          <label><span class="fighter-type">RESOLUTION</span>
-            <select id="resolution-select" aria-label="Render resolution">
-              <option value="720">720p</option>
-              <option value="1080">1080p</option>
-              <option value="1440">1440p</option>
-              <option value="2160" selected>4K (2160p)</option>
-            </select>
-          </label>
-          <label><span class="fighter-type">FRAME RATE</span>
-            <select id="fps-select" aria-label="Frame rate limit">
-              <option value="30">30 FPS</option>
-              <option value="60" selected>60 FPS</option>
-              <option value="120">120 FPS</option>
-              <option value="144">144 FPS</option>
-              <option value="0">Uncapped</option>
-            </select>
-          </label>
-        </div>
         <div class="select-actions">
         <p id="controls-hint">Fight three CPU rivals. Move: WASD <span>·</span> Jump: Space <span>·</span> Fight: J <span>·</span> Special: K</p>
           <button class="primary-button" id="start-match" type="button" aria-label="Fight">FIGHT! <span aria-hidden="true">→</span></button>
@@ -306,6 +287,25 @@
             <button class="secondary-button" id="admin-next-track" type="button">🎵 Next Track (1/30)</button>
             <button class="secondary-button" id="admin-toggle-music" type="button">🔊 Music: On</button>
             <button class="secondary-button" id="admin-reset-unlocks" type="button">🔒 Reset Unlocks to Starters</button>
+            <div class="quality-row admin-section">
+              <label><span class="fighter-type">RESOLUTION</span>
+                <select id="resolution-select" aria-label="Render resolution">
+                  <option value="720" selected>720p</option>
+                  <option value="1080">1080p</option>
+                  <option value="1440">1440p</option>
+                  <option value="2160">4K (2160p)</option>
+                </select>
+              </label>
+              <label><span class="fighter-type">FRAME RATE</span>
+                <select id="fps-select" aria-label="Frame rate limit">
+                  <option value="30">30 FPS</option>
+                  <option value="60" selected>60 FPS</option>
+                  <option value="120">120 FPS</option>
+                  <option value="144">144 FPS</option>
+                  <option value="0">Uncapped</option>
+                </select>
+              </label>
+            </div>
             <div class="admin-section">
               <label for="admin-difficulty">CPU Difficulty</label>
               <select id="admin-difficulty"></select>

@@ -359,7 +359,7 @@ try {
   graphicsError.hidden = false;
   return;
 }
-const renderQuality = { height: 2160, fps: 60 };
+const renderQuality = { height: 720, fps: 60 };
 let frameInterval = 1000 / 60;
 
 function applyRenderQuality() {
