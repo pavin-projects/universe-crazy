@@ -489,7 +489,7 @@ function saveUnlockedFighters() {
 
 let entityUnlocked = readEntityUnlock();
 const unlockedFighters = readUnlockedFighters();
-const starterCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur", "monkey", "lizard"];
+const starterCharacterIds = ["bumble", "robot", "nova", "titan", "glitch", "tide", "frog", "dinosaur", "monkey", "lizard", "sandpiper", "frostling", "wraith", "pinwheel", "shellbeetle", "gusty"];
 const unlockableCharacterIds = [
   "ghost", "mrstar", "stubby", "stickman", "larry", "bob", "michael", "rand",
   "robert", "bopper", "pewstickman", "liz", "cindy", "munchy", "cryptokin",
@@ -610,6 +610,60 @@ const characters = {
     special: "tongue",
     specialName: "Tongue Lash",
     specialDescription: "Snags a rival with a long lizard tongue."
+  },
+  sandpiper: {
+    name: "Dune Piper",
+    palette: { primary: "#e2b45c", dark: "#4a2f12", trim: "#fff0b8", accent: "#ffcf6b" },
+    speed: 7.0,
+    power: 1.0,
+    special: "dune",
+    specialName: "Dust Devil",
+    specialDescription: "Whips up a sand vortex that pulls rivals in and stings them."
+  },
+  frostling: {
+    name: "Frostling",
+    palette: { primary: "#8fe3ff", dark: "#17324a", trim: "#f0fbff", accent: "#4ac8ff" },
+    speed: 6.8,
+    power: 1.12,
+    special: "frostnova",
+    specialName: "Frost Nova",
+    specialDescription: "Blasts a ring of cold that knocks nearby rivals back."
+  },
+  wraith: {
+    name: "Shade Wraith",
+    palette: { primary: "#4b3b6b", dark: "#120c22", trim: "#c9b6ff", accent: "#ff4fa3" },
+    speed: 7.0,
+    power: 0.94,
+    special: "shadowdash",
+    specialName: "Shadow Dash",
+    specialDescription: "Dashes forward while briefly untouchable, striking anyone in the way."
+  },
+  pinwheel: {
+    name: "Pinwheel Pup",
+    palette: { primary: "#ffb347", dark: "#402a10", trim: "#fff3d6", accent: "#ff5e8a" },
+    speed: 7.2,
+    power: 0.86,
+    special: "comet",
+    specialName: "Comet Chain",
+    specialDescription: "Throws three spinning stars that curve back to the thrower."
+  },
+  shellbeetle: {
+    name: "Shell Beetle",
+    palette: { primary: "#3f9b8e", dark: "#10302c", trim: "#b8fff0", accent: "#ffd166" },
+    speed: 6.4,
+    power: 1.42,
+    special: "shellguard",
+    specialName: "Shell Guard",
+    specialDescription: "Raises a hard shell that shoves nearby rivals away."
+  },
+  gusty: {
+    name: "Gusty Glider",
+    palette: { primary: "#9d7bff", dark: "#2a1f52", trim: "#e4dcff", accent: "#ffe066" },
+    speed: 7.4,
+    power: 0.84,
+    special: "gale",
+    specialName: "Gale Gust",
+    specialDescription: "Fires two gusts of wind that push rivals off their footing."
   },
   ghost: {
     name: "Ghost Boy",
@@ -2052,7 +2106,8 @@ const bodyShapeByKind = {
   omegabot: "broad", galaxydragon: "broad", entity: "broad",
   glitch: "lanky", lizard: "lanky", frostbite: "lanky", shadowcat: "lanky", monkey: "lanky",
   bob: "round", jim: "round", rocketpup: "round", laserbear: "round", neonpanda: "round",
-  rand: "petite", immy: "petite", voltbunny: "petite",
+  rand: "petite", immy: "petite", voltbunny: "petite", wraith: "petite",
+  sandpiper: "round", frostling: "lanky", pinwheel: "standard", shellbeetle: "broad", gusty: "pear",
   liz: "hourglass", cindy: "pear"
 };
 
@@ -2537,7 +2592,7 @@ function makeFighter(kind, index) {
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
-    attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, wallSlide: false, wallDown: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
+    attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, speechBubble: null, speechTimer: 0
   };
 }
@@ -3172,6 +3227,18 @@ const uniqueSpecialMechanics = {
     applyAreaAbility(f, { radius: 4.6, damage: 12, force: 5.5, color: "#66e4ee", pull: true });
     launchProjectile(f, { color: "#ff3b30", emissive: "#66e4ee", radius: 0.34, speed: 18, life: 1.3, damage: 14, force: 6.8 });
   },
+  dune: (f, b, p) => applyAreaAbility(f, { radius: 3.4, damage: 9 * p * b, force: 4.6, color: "#f5c76a", pull: true }),
+  frostnova: (f, b, p) => applyAreaAbility(f, { radius: 3.6, damage: 10 * p * b, force: 6.0, color: "#9fe8ff" }),
+  shadowdash: (f, b, p) => {
+    const t = nearestOpponent(f);
+    f.invulnerable = Math.max(f.invulnerable, 0.6);
+    f.vx = (t ? Math.sign(t.x - f.x) || f.facing : f.facing) * 13;
+    spawnAbilityRing(f, "#ff4fa3", 0.3);
+    if (t && Math.hypot(t.x - f.x, t.z - f.z) < 2.6) hitTarget(f, t, 12 * p * b, 6);
+  },
+  comet: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffb347", emissive: "#ff5e8a", radius: 0.26, speed: 10, life: 1.6, damage: 8, force: 4.6, vz: s * 1.6, boomerang: true })),
+  shellguard: (f, b, p) => spawnShieldBurst(f, "#ffd166", 12, 3.6, 13 * p * b, 6.6),
+  gale: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "wave", color: "#d4c4ff", emissive: "#ffe066", radius: 0.5, speed: 10, life: 1.5, damage: 10, force: 6.2, offsetZ: s * 0.5 })),
   entity: (f) => applyAreaAbility(f, { radius: 5.0, damage: 15, force: 6.5, color: "#b774ff", pull: true })
 };
 
@@ -3292,6 +3359,9 @@ function showKnockoutFlash(fighter) {
 
 function hitTarget(attacker, target, damage, force) {
   if (target.eliminated || target.respawn > 0 || target.invulnerable > 0) return;
+  if (battleMode === "cpu" && target === fighters[0] && fighters.indexOf(attacker) > 0) {
+    damage *= difficultyLevels[cpuDifficulty].damage;
+  }
   target.damage += damage;
   target.hp = Math.max(0, target.hp - damage);
   const direction = target.x >= attacker.x ? 1 : -1;
@@ -3307,11 +3377,6 @@ function hitTarget(attacker, target, damage, force) {
   target.vy = Math.max(target.vy, 2.8 + target.damage * 0.022);
   target.vz += Math.sign(target.z - attacker.z || 1) * 1.3;
   target.grounded = false;
-  if (target.wallSlide || target.wallDown) {
-    target.wallSlide = false;
-    target.wallDown = false;
-    target.slipTimer = 0.85;
-  }
   target.hitFlash = 0.24;
   spawnImpact(target, damage >= 10);
   hudDirty = true;
@@ -3417,8 +3482,6 @@ function respawn(fighter, index) {
     return;
   }
   [fighter.x, fighter.z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4]][index % 4];
-  fighter.wallSlide = false;
-  fighter.wallDown = false;
   fighter.y = 0.08;
   fighter.z = index === 0 ? 1.1 : -0.6;
   fighter.vx = 0;
@@ -3435,6 +3498,14 @@ function respawn(fighter, index) {
   hudDirty = true;
   document.querySelector("#battle-status").textContent = `${characters[fighter.kind].name} returns!`;
 }
+
+const difficultyLevels = {
+  easy: { label: "Easy", speed: 0.85, thinkMin: 0.5, thinkRange: 0.4, strikeRange: 2.0, specialChance: 0.08, jumpChance: 0.05, damage: 0.7, edgeCaution: 2 },
+  normal: { label: "Normal", speed: 1, thinkMin: 0.35, thinkRange: 0.35, strikeRange: 2.2, specialChance: 0.18, jumpChance: 0.1, damage: 1, edgeCaution: 0.9 },
+  hard: { label: "Hard", speed: 1.12, thinkMin: 0.2, thinkRange: 0.15, strikeRange: 2.35, specialChance: 0.3, jumpChance: 0.18, damage: 1.2, edgeCaution: 0.86 },
+  nightmare: { label: "Nightmare", speed: 1.25, thinkMin: 0.1, thinkRange: 0.1, strikeRange: 2.5, specialChance: 0.45, jumpChance: 0.28, damage: 1.4, edgeCaution: 0.8 }
+};
+let cpuDifficulty = "hard";
 
 function readInput(fighter, index, delta) {
   const isCpu = index > 0 && battleMode === "cpu";
@@ -3467,18 +3538,25 @@ function readInput(fighter, index, delta) {
     special = tapped(playerControls.special, ...(arrowAliases ? ["ShiftRight"] : []));
     crouchHeld = pressed(playerControls.crouch);
   } else {
+    const level = difficultyLevels[cpuDifficulty];
     const target = nearestOpponent(fighter);
     if (!target) return;
     const dx = target.x - fighter.x;
     const dz = target.z - fighter.z;
+    const nearRim = Math.hypot(fighter.x, fighter.z) > floorRadius * level.edgeCaution;
     horizontal = Math.abs(dx) > 1.7 ? Math.sign(dx) : 0;
     depth = Math.abs(dz) > 1.1 ? Math.sign(dz) : 0;
+    if (nearRim) {
+      horizontal = -Math.sign(fighter.x) * (Math.abs(fighter.x) > 0.5 ? 1 : 0);
+      depth = -Math.sign(fighter.z) * (Math.abs(fighter.z) > 0.5 ? 1 : 0);
+    }
     fighter.cpuThinkTime -= delta;
     if (fighter.cpuThinkTime <= 0) {
-      fighter.cpuThinkTime = 0.25 + Math.random() * 0.35;
-      strike = Math.hypot(dx, dz) < 2.2;
-      special = Math.hypot(dx, dz) < 4 && Math.random() < 0.22;
-      jump = fighter.grounded && Math.random() < 0.12;
+      fighter.cpuThinkTime = level.thinkMin + Math.random() * level.thinkRange;
+      const distance = Math.hypot(dx, dz);
+      strike = !nearRim && distance < level.strikeRange;
+      special = !nearRim && distance < 4 && Math.random() < level.specialChance;
+      jump = fighter.grounded && !nearRim && Math.random() < level.jumpChance;
     }
   }
 
@@ -3486,7 +3564,7 @@ function readInput(fighter, index, delta) {
     horizontal = 0;
     depth = 0;
   }
-  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1) * 1.5;
+  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1) * 1.5 * (isCpu ? difficultyLevels[cpuDifficulty].speed : 1);
   fighter.vx = (fighter.vx + horizontal * speed * delta * 8) * Math.exp(-(horizontal ? 3.2 : 7) * delta);
   fighter.vz = (fighter.vz + depth * speed * delta * 6) * Math.exp(-(depth ? 3.8 : 7) * delta);
   fighter.vx = THREE.MathUtils.clamp(fighter.vx, -speed, speed);
@@ -3576,7 +3654,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  if (fighter.slipTimer <= 0 && !fighter.wallDown) readInput(fighter, index, delta);
+  if (fighter.slipTimer <= 0) readInput(fighter, index, delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -3690,33 +3768,9 @@ function updateFighter(fighter, index, delta, elapsed) {
     }
   }
 
-  // The arena rim is a wall: fighters stop at it, slide down when airborne, and stay down until punched
-  const wallRadius = floorRadius - fighterBodyRadius;
-  const rimDistance = Math.hypot(fighter.x, fighter.z);
-  if (rimDistance > wallRadius) {
-    const normalX = fighter.x / rimDistance;
-    const normalZ = fighter.z / rimDistance;
-    fighter.x = normalX * wallRadius;
-    fighter.z = normalZ * wallRadius;
-    if (fighter.vx * normalX > 0) fighter.vx = 0;
-    if (fighter.vz * normalZ > 0) fighter.vz = 0;
-    if (fighter.grounded && fighter.wallSlide) {
-      fighter.wallSlide = false;
-      fighter.wallDown = true;
-    } else if (!fighter.grounded) {
-      fighter.wallSlide = true;
-      fighter.vy = Math.max(fighter.vy, -2.2);
-    }
-  } else if (!fighter.wallDown) {
-    fighter.wallSlide = false;
-  }
-  if (fighter.wallDown) {
-    fighter.vx = 0;
-    fighter.vz = 0;
-  }
-
+  // Past the arena edge there is no floor, so fighters fall and lose a stock when they drop out of the air
   if (fighter.y < -2.8) {
-    beginKnockout(fighter, "drifts out into space!");
+    beginKnockout(fighter, "falls off the edge!");
     return;
   }
 
@@ -4077,12 +4131,13 @@ function frame(timestamp = 0) {
 
 function isFighterUnlocked(kind) {
   if (kind === "entity") return entityUnlocked;
+  if (characters[kind]?.custom) return true;
   return starterCharacterIds.includes(kind) || unlockedFighters.has(kind);
 }
 
 function refreshUnlockUI() {
   const totalCount = regularCharacterIds.length + 1;
-  const unlockedCount = starterCharacterIds.length + unlockedFighters.size + (entityUnlocked ? 1 : 0);
+  const unlockedCount = starterCharacterIds.length + unlockedFighters.size + customFighters.length + (entityUnlocked ? 1 : 0);
   document.querySelector("#fighter-count").textContent = `${unlockedCount} FIGHTERS`;
   document.querySelector("#unlock-progress").textContent = `${unlockedCount} / ${totalCount} UNLOCKED`;
   document.querySelectorAll(".fighter-card").forEach((card) => {
@@ -4118,7 +4173,31 @@ function rollRareUnlock(multiplier = 1) {
 
 const fighterGrid = document.querySelector("#fighter-grid");
 const entityCard = fighterGrid.querySelector('[data-fighter="entity"]');
-unlockableCharacterIds.forEach((kind) => {
+const customFighterStorageKey = "universeCrazyCustomFighters";
+const customBuildPresets = {
+  quick: { speed: 7.2, power: 0.9 },
+  balanced: { speed: 6.2, power: 1.1 },
+  heavy: { speed: 4.9, power: 1.36 }
+};
+
+function readCustomFighters() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(customFighterStorageKey) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomFighters() {
+  try {
+    window.localStorage.setItem(customFighterStorageKey, JSON.stringify(customFighters));
+  } catch (error) {
+    if (!(error instanceof DOMException) || error.name !== "SecurityError") throw error;
+  }
+}
+
+function appendFighterCard(kind) {
   const info = characters[kind];
   const button = document.createElement("button");
   button.className = "fighter-card";
@@ -4133,10 +4212,40 @@ unlockableCharacterIds.forEach((kind) => {
       <small>${info.tagline}</small>
       <small class="ability-note">Special: ${info.specialName}</small>
     </span>
-    <span class="pick-indicator" aria-hidden="true">🔒</span>
+    <span class="pick-indicator" aria-hidden="true">${info.custom ? "✦" : "🔒"}</span>
   `;
   fighterGrid.insertBefore(button, entityCard);
-});
+  return button;
+}
+
+function registerCustomFighter(entry) {
+  const kind = `custom-${entry.id}`;
+  const base = characters[entry.ability];
+  const preset = customBuildPresets[entry.build] || customBuildPresets.balanced;
+  characters[kind] = {
+    name: entry.name,
+    palette: { primary: entry.primary, dark: "#1b1630", trim: entry.trim, accent: entry.trim },
+    speed: preset.speed,
+    power: preset.power,
+    special: base.special,
+    specialName: base.specialName,
+    specialDescription: base.specialDescription,
+    icon: base.icon || "✦",
+    tagline: `Custom · ${entry.build} build`,
+    rarity: "custom",
+    dropChance: 0,
+    custom: true
+  };
+  bodyShapeByKind[kind] = entry.shape;
+  uniqueSpecialMechanics[kind] = uniqueSpecialMechanics[entry.ability];
+  regularCharacterIds.push(kind);
+  appendFighterCard(kind);
+  return kind;
+}
+
+unlockableCharacterIds.forEach(appendFighterCard);
+let customFighters = readCustomFighters();
+customFighters.forEach(registerCustomFighter);
 
 createUniverseBackdrop();
 createStars();
@@ -4186,7 +4295,7 @@ document.querySelector("#admin-unlock-all").addEventListener("click", () => {
   saveUnlockedFighters();
   saveEntityUnlock();
   refreshUnlockUI();
-  document.querySelector("#preview-note").textContent = "🔓 Admin unlocked all 63 fighters!";
+  document.querySelector("#preview-note").textContent = `🔓 Admin unlocked all ${regularCharacterIds.length + 1} fighters!`;
   adminModal.hidden = true;
 });
 document.querySelector("#admin-boss-fight").addEventListener("click", () => {
@@ -4212,6 +4321,59 @@ document.querySelector("#admin-reset-unlocks").addEventListener("click", () => {
   adminModal.hidden = true;
 });
 
+function fillSelect(select, options) {
+  select.replaceChildren(...options.map(([value, label]) => new Option(label, value)));
+}
+
+const adminDifficulty = document.querySelector("#admin-difficulty");
+fillSelect(adminDifficulty, Object.entries(difficultyLevels).map(([key, level]) => [key, level.label]));
+adminDifficulty.value = cpuDifficulty;
+adminDifficulty.addEventListener("change", () => {
+  cpuDifficulty = adminDifficulty.value;
+  document.querySelector("#difficulty-status").textContent = `CPU difficulty set to ${difficultyLevels[cpuDifficulty].label}.`;
+});
+
+fillSelect(document.querySelector("#custom-shape"), [
+  ["standard", "Standard"], ["broad", "Broad"], ["round", "Round"], ["lanky", "Lanky"],
+  ["petite", "Petite"], ["hourglass", "Hourglass"], ["pear", "Pear"]
+]);
+fillSelect(
+  document.querySelector("#custom-ability"),
+  Object.keys(uniqueSpecialMechanics)
+    .filter((kind) => characters[kind] && !characters[kind].custom)
+    .map((kind) => [kind, `${characters[kind].specialName} (${characters[kind].name})`])
+);
+
+document.querySelector("#custom-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const status = document.querySelector("#custom-status");
+  const name = document.querySelector("#custom-name").value.trim();
+  if (!name) {
+    status.textContent = "Give your character a name first.";
+    return;
+  }
+  if (customFighters.length >= 20) {
+    status.textContent = "Custom character limit reached (20).";
+    return;
+  }
+  const entry = {
+    id: `${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`,
+    name,
+    shape: document.querySelector("#custom-shape").value,
+    ability: document.querySelector("#custom-ability").value,
+    primary: document.querySelector("#custom-primary").value,
+    trim: document.querySelector("#custom-trim").value,
+    build: document.querySelector("#custom-build").value
+  };
+  customFighters.push(entry);
+  saveCustomFighters();
+  const kind = registerCustomFighter(entry);
+  bindFighterCard(document.querySelector(`[data-fighter="${kind}"]`));
+  refreshUnlockUI();
+  document.querySelector("#custom-name").value = "";
+  status.textContent = `✓ ${name} created. Find them in the fighter grid.`;
+});
+
 document.querySelector("#enter-portal").addEventListener("click", () => {
   showSelection();
   startMusic().catch(handleMusicError);
@@ -4232,7 +4394,7 @@ document.querySelector("#arena-previous").addEventListener("click", () => change
 document.querySelector("#arena-next").addEventListener("click", () => changeArena(1));
 document.querySelector("#arena-random").addEventListener("click", () => changeArena(1 + Math.floor(Math.random() * (arenaCount - 1))));
 
-document.querySelectorAll(".fighter-card").forEach((card) => {
+function bindFighterCard(card) {
   card.addEventListener("click", () => {
     const kind = card.dataset.fighter;
     if (!isFighterUnlocked(kind)) {
@@ -4250,7 +4412,9 @@ document.querySelectorAll(".fighter-card").forEach((card) => {
       item.setAttribute("aria-pressed", String(selected));
     });
   });
-});
+}
+
+document.querySelectorAll(".fighter-card").forEach(bindFighterCard);
 
 window.addEventListener("keydown", (event) => {
   const supported = [

@@ -60,7 +60,7 @@
           <h2 id="select-title">Who are you?</h2>
           <p class="preview-note" id="preview-note">Bumble Boy is warming up beside the portal.</p>
           <div class="unlock-bar">
-            <span class="unlock-progress" id="unlock-progress">10 / 63 UNLOCKED</span>
+            <span class="unlock-progress" id="unlock-progress">16 / 69 UNLOCKED</span>
           </div>
         </div>
         <div class="fighter-grid" id="fighter-grid">
@@ -117,6 +117,36 @@
           <button class="fighter-card" type="button" data-fighter="lizard" aria-pressed="false">
             <span class="fighter-art lizard-art" aria-hidden="true"><i></i></span>
             <span class="fighter-card-copy"><span class="fighter-type">THE SHADES REPTILE</span><strong>Surface Lizard</strong><small>Green • Red Shorts • Sunglasses</small><small class="ability-note">Special: Tongue Lash</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="sandpiper" aria-pressed="false">
+            <span class="fighter-art sandpiper-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE DUNE DANCER</span><strong>Dune Piper</strong><small>Sandy • Steady • Sharp</small><small class="ability-note">Special: Dust Devil</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="frostling" aria-pressed="false">
+            <span class="fighter-art frostling-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE ICE SPRITE</span><strong>Frostling</strong><small>Cool • Tough • Crisp</small><small class="ability-note">Special: Frost Nova</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="wraith" aria-pressed="false">
+            <span class="fighter-art wraith-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE NIGHT DRIFTER</span><strong>Shade Wraith</strong><small>Shadowy • Quick • Sly</small><small class="ability-note">Special: Shadow Dash</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="pinwheel" aria-pressed="false">
+            <span class="fighter-art pinwheel-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE SPIN SPECIALIST</span><strong>Pinwheel Pup</strong><small>Spinning • Playful • Bright</small><small class="ability-note">Special: Comet Chain</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="shellbeetle" aria-pressed="false">
+            <span class="fighter-art shellbeetle-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE ARMORED GUARD</span><strong>Shell Beetle</strong><small>Armored • Stout • Stubborn</small><small class="ability-note">Special: Shell Guard</small></span>
+            <span class="pick-indicator" aria-hidden="true">✓</span>
+          </button>
+          <button class="fighter-card" type="button" data-fighter="gusty" aria-pressed="false">
+            <span class="fighter-art gusty-art" aria-hidden="true"><i></i></span>
+            <span class="fighter-card-copy"><span class="fighter-type">THE WIND RIDER</span><strong>Gusty Glider</strong><small>Airy • Nimble • Breezy</small><small class="ability-note">Special: Gale Gust</small></span>
             <span class="pick-indicator" aria-hidden="true">✓</span>
           </button>
           <button class="fighter-card entity-card" type="button" data-fighter="entity" aria-pressed="false" hidden>
@@ -236,11 +266,31 @@
             <p class="admin-status" id="admin-status" role="status"></p>
           </div>
           <div class="admin-tools" id="admin-tools" hidden>
-            <button class="primary-button" id="admin-unlock-all" type="button">🔓 Unlock All 63 Fighters</button>
+            <button class="primary-button" id="admin-unlock-all" type="button">🔓 Unlock All 69 Fighters</button>
             <button class="secondary-button" id="admin-boss-fight" type="button">👁 Fight Entity.exe Boss</button>
             <button class="secondary-button" id="admin-next-track" type="button">🎵 Next Track (1/30)</button>
             <button class="secondary-button" id="admin-toggle-music" type="button">🔊 Music: On</button>
             <button class="secondary-button" id="admin-reset-unlocks" type="button">🔒 Reset Unlocks to Starters</button>
+            <div class="admin-section">
+              <label for="admin-difficulty">CPU Difficulty</label>
+              <select id="admin-difficulty"></select>
+              <p class="admin-status" id="difficulty-status" role="status"></p>
+            </div>
+            <form class="admin-section" id="custom-form">
+              <label for="custom-name">Create Custom Character</label>
+              <input id="custom-name" type="text" maxlength="18" placeholder="Character name" autocomplete="off">
+              <div class="admin-row">
+                <div class="admin-field"><span>Body shape</span><select id="custom-shape"></select></div>
+                <div class="admin-field"><span>Special ability</span><select id="custom-ability"></select></div>
+              </div>
+              <div class="admin-row admin-row-3">
+                <div class="admin-field"><span>Main color</span><input id="custom-primary" type="color" value="#4f8cff"></div>
+                <div class="admin-field"><span>Trim color</span><input id="custom-trim" type="color" value="#ffe38a"></div>
+                <div class="admin-field"><span>Build</span><select id="custom-build"><option value="quick">Quick</option><option value="balanced" selected>Balanced</option><option value="heavy">Heavy</option></select></div>
+              </div>
+              <button class="primary-button" id="custom-create" type="submit">+ Create Character</button>
+              <p class="admin-status" id="custom-status" role="status"></p>
+            </form>
           </div>
         </div>
       </section>
