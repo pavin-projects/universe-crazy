@@ -359,7 +359,24 @@ try {
   graphicsError.hidden = false;
   return;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
+const renderQuality = { height: 2160, fps: 60 };
+let frameInterval = 1000 / 60;
+
+function applyRenderQuality() {
+  const aspect = window.innerWidth / window.innerHeight;
+  const height = renderQuality.height;
+  renderer.setPixelRatio(1);
+  renderer.setSize(Math.round(height * aspect), height, false);
+}
+
+function setRenderQuality(height, fps) {
+  renderQuality.height = height;
+  renderQuality.fps = fps;
+  frameInterval = fps > 0 ? 1000 / fps : 0;
+  applyRenderQuality();
+}
+
+renderer.setPixelRatio(1);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -512,7 +529,6 @@ let knockoutFlashTimer = 0;
 const yAxis = new THREE.Vector3(0, 1, 0);
 let animationFrame = 0;
 let lastFrameTime = 0;
-const frameInterval = 1000 / 60;
 let joystickPointerId = null;
 let cameraShake = 0;
 let graphicsContextLost = false;
@@ -2584,7 +2600,7 @@ function makeFighter(kind, index) {
   powerAura.rotation.x = Math.PI / 2;
   powerAura.visible = false;
   visual.userData.powerAura = powerAura;
-  const [x, z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4]][index % 4];
+  const [x, z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4], [-1.3, -3.9], [1.3, 3.9]][index % 6];
   visual.position.set(x, 0.08, z);
   arena.add(visual);
   return {
@@ -2632,7 +2648,9 @@ function updateHud() {
     { panel: "#player-one-panel", name: "#player-one-name", damage: "#player-one-damage", hp: "#player-one-hp", stocks: "#player-one-stocks" },
     { panel: "#player-two-panel", name: "#player-two-name", damage: "#player-two-damage", hp: "#player-two-hp", stocks: "#player-two-stocks" },
     { panel: "#player-three-panel", name: "#player-three-name", damage: "#player-three-damage", hp: "#player-three-hp", stocks: "#player-three-stocks" },
-    { panel: "#player-four-panel", name: "#player-four-name", damage: "#player-four-damage", hp: "#player-four-hp", stocks: "#player-four-stocks" }
+    { panel: "#player-four-panel", name: "#player-four-name", damage: "#player-four-damage", hp: "#player-four-hp", stocks: "#player-four-stocks" },
+    { panel: "#player-five-panel", name: "#player-five-name", damage: "#player-five-damage", hp: "#player-five-hp", stocks: "#player-five-stocks" },
+    { panel: "#player-six-panel", name: "#player-six-name", damage: "#player-six-damage", hp: "#player-six-hp", stocks: "#player-six-stocks" }
   ];
   panels.forEach((selectors, index) => {
     const fighter = fighters[index];
@@ -2670,7 +2688,7 @@ function updateControlsHint() {
     return `P${index + 1} ${characters[kind].specialName} (${specialKeys[index]})`;
   }).join(" · ");
   const controls = battleMode === "cpu"
-    ? `Solo vs. 3 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
+    ? `Solo vs. 5 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
     : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Crouch: C / R-Ctrl / B / Num3 · Specials: ${localSpecials}`;
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
@@ -2707,8 +2725,8 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   clearFighters();
   const opponentPool = regularCharacterIds.filter((kind) => kind !== selectedFighter && isFighterUnlocked(kind));
   const fallbackPool = starterCharacterIds.filter((kind) => kind !== selectedFighter);
-  const activePool = opponentPool.length >= 3 ? opponentPool : [...opponentPool, ...fallbackPool];
-  const fighterCount = secretChallengeActive ? 2 : 4;
+  const activePool = opponentPool.length >= 5 ? opponentPool : [...opponentPool, ...fallbackPool];
+  const fighterCount = secretChallengeActive ? 2 : battleMode === "cpu" ? 6 : 4;
   fighters.push(makeFighter(selectedFighter, 0));
   for (let index = 1; index < fighterCount; index += 1) {
     const kind = index === 1 && opponentOverride
@@ -2761,8 +2779,11 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
   document.querySelector("#touch-controls").hidden = false;
-  for (let index = 1; index < 4; index += 1) {
-    document.querySelector(`#player-${["one", "two", "three", "four"][index]}-label`).textContent =
+  document.querySelector(".battle-hud").classList.toggle("six-fighter-hud", fighters.length > 4);
+  for (let index = 1; index < 6; index += 1) {
+    const slot = ["one", "two", "three", "four", "five", "six"][index];
+    document.querySelector(`#player-${slot}-panel`).hidden = index >= fighters.length;
+    document.querySelector(`#player-${slot}-label`).textContent =
       battleMode === "cpu" ? `CPU ${index}` : `PLAYER ${index + 1}`;
   }
   document.querySelector("#battle-status").textContent = "PORTAL ARRIVAL!";
@@ -3227,18 +3248,18 @@ const uniqueSpecialMechanics = {
     applyAreaAbility(f, { radius: 4.6, damage: 12, force: 5.5, color: "#66e4ee", pull: true });
     launchProjectile(f, { color: "#ff3b30", emissive: "#66e4ee", radius: 0.34, speed: 18, life: 1.3, damage: 14, force: 6.8 });
   },
-  dune: (f, b, p) => applyAreaAbility(f, { radius: 3.4, damage: 9 * p * b, force: 4.6, color: "#f5c76a", pull: true }),
-  frostnova: (f, b, p) => applyAreaAbility(f, { radius: 3.6, damage: 10 * p * b, force: 6.0, color: "#9fe8ff" }),
-  shadowdash: (f, b, p) => {
+  sandpiper: (f, b, p) => applyAreaAbility(f, { radius: 3.4, damage: 9 * p * b, force: 4.6, color: "#f5c76a", pull: true }),
+  frostling: (f, b, p) => applyAreaAbility(f, { radius: 3.6, damage: 10 * p * b, force: 6.0, color: "#9fe8ff" }),
+  wraith: (f, b, p) => {
     const t = nearestOpponent(f);
     f.invulnerable = Math.max(f.invulnerable, 0.6);
     f.vx = (t ? Math.sign(t.x - f.x) || f.facing : f.facing) * 13;
     spawnAbilityRing(f, "#ff4fa3", 0.3);
     if (t && Math.hypot(t.x - f.x, t.z - f.z) < 2.6) hitTarget(f, t, 12 * p * b, 6);
   },
-  comet: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffb347", emissive: "#ff5e8a", radius: 0.26, speed: 10, life: 1.6, damage: 8, force: 4.6, vz: s * 1.6, boomerang: true })),
-  shellguard: (f, b, p) => spawnShieldBurst(f, "#ffd166", 12, 3.6, 13 * p * b, 6.6),
-  gale: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "wave", color: "#d4c4ff", emissive: "#ffe066", radius: 0.5, speed: 10, life: 1.5, damage: 10, force: 6.2, offsetZ: s * 0.5 })),
+  pinwheel: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffb347", emissive: "#ff5e8a", radius: 0.26, speed: 10, life: 1.6, damage: 8, force: 4.6, vz: s * 1.6, boomerang: true })),
+  shellbeetle: (f, b, p) => spawnShieldBurst(f, "#ffd166", 12, 3.6, 13 * p * b, 6.6),
+  gusty: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "wave", color: "#d4c4ff", emissive: "#ffe066", radius: 0.5, speed: 10, life: 1.5, damage: 10, force: 6.2, offsetZ: s * 0.5 })),
   entity: (f) => applyAreaAbility(f, { radius: 5.0, damage: 15, force: 6.5, color: "#b774ff", pull: true })
 };
 
@@ -4386,10 +4407,17 @@ document.querySelector("#return-to-select").addEventListener("click", showSelect
 document.querySelector("#return-through-portal").addEventListener("click", showSelection);
 document.querySelector("#toggle-mode").addEventListener("click", () => {
   battleMode = battleMode === "cpu" ? "local" : "cpu";
-  document.querySelector("#mode-label").textContent = battleMode === "cpu" ? "Solo vs. 3 CPUs" : "Local 4-player";
+  document.querySelector("#mode-label").textContent = battleMode === "cpu" ? "Solo vs. 5 CPUs" : "Local 4-player";
   document.querySelector("#toggle-mode").textContent = battleMode === "cpu" ? "Local 4-player" : "Solo vs. CPUs";
   updateControlsHint();
 });
+document.querySelector("#resolution-select").addEventListener("change", (event) => {
+  setRenderQuality(Number(event.target.value), renderQuality.fps);
+});
+document.querySelector("#fps-select").addEventListener("change", (event) => {
+  setRenderQuality(renderQuality.height, Number(event.target.value));
+});
+setRenderQuality(renderQuality.height, renderQuality.fps);
 document.querySelector("#arena-previous").addEventListener("click", () => changeArena(-1));
 document.querySelector("#arena-next").addEventListener("click", () => changeArena(1));
 document.querySelector("#arena-random").addEventListener("click", () => changeArena(1 + Math.floor(Math.random() * (arenaCount - 1))));
@@ -4503,8 +4531,7 @@ document.querySelectorAll(".touch-controls button").forEach((button) => {
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
+  applyRenderQuality();
 });
 
 renderer.domElement.addEventListener("webglcontextlost", (event) => {

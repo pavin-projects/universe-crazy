@@ -156,8 +156,27 @@
           </button>
         </div>
         <div class="mode-row">
-        <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. 3 CPUs</strong></div>
+        <div><span class="fighter-type">BATTLE MODE</span><strong id="mode-label">Solo vs. 5 CPUs</strong></div>
           <button class="secondary-button" id="toggle-mode" type="button" aria-label="Change battle mode">Change mode</button>
+        </div>
+        <div class="quality-row">
+          <label><span class="fighter-type">RESOLUTION</span>
+            <select id="resolution-select" aria-label="Render resolution">
+              <option value="720">720p</option>
+              <option value="1080">1080p</option>
+              <option value="1440">1440p</option>
+              <option value="2160" selected>4K (2160p)</option>
+            </select>
+          </label>
+          <label><span class="fighter-type">FRAME RATE</span>
+            <select id="fps-select" aria-label="Frame rate limit">
+              <option value="30">30 FPS</option>
+              <option value="60" selected>60 FPS</option>
+              <option value="120">120 FPS</option>
+              <option value="144">144 FPS</option>
+              <option value="0">Uncapped</option>
+            </select>
+          </label>
         </div>
         <div class="select-actions">
         <p id="controls-hint">Fight three CPU rivals. Move: WASD <span>·</span> Jump: Space <span>·</span> Fight: J <span>·</span> Special: K</p>
@@ -213,6 +232,22 @@
         <small class="hp-label">HP</small>
         <span class="hp-bar" id="player-four-hp" role="meter" aria-label="Player 4 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
         <span class="stocks" id="player-four-stocks" aria-label="3 stocks">● ● ●</span>
+        </div>
+        <div class="hud-player hud-player-five" id="player-five-panel" hidden>
+        <span class="hud-dot" aria-hidden="true"></span>
+        <div><small id="player-five-label">CPU 4</small><strong id="player-five-name">Frost Nova</strong></div>
+        <strong class="damage" id="player-five-damage">0%</strong>
+        <small class="hp-label">HP</small>
+        <span class="hp-bar" id="player-five-hp" role="meter" aria-label="Player 5 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
+        <span class="stocks" id="player-five-stocks" aria-label="3 stocks">● ● ●</span>
+        </div>
+        <div class="hud-player hud-player-six" id="player-six-panel" hidden>
+        <span class="hud-dot" aria-hidden="true"></span>
+        <div><small id="player-six-label">CPU 5</small><strong id="player-six-name">Gusty Glider</strong></div>
+        <strong class="damage" id="player-six-damage">0%</strong>
+        <small class="hp-label">HP</small>
+        <span class="hp-bar" id="player-six-hp" role="meter" aria-label="Player 6 health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span></span></span>
+        <span class="stocks" id="player-six-stocks" aria-label="3 stocks">● ● ●</span>
         </div>
         <button class="hud-exit" id="leave-battle" type="button">Exit match</button>
       </section>

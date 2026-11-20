@@ -166,6 +166,9 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .arena-random { font-size: .68rem; }
 .mode-row { justify-content: space-between; }
 .secondary-button { min-height: 39px; padding: 0 13px; border-color: #4a4b70; background: #222440; color: #e6e3ff; font-size: .77rem; }
+.quality-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.quality-row label { display: grid; gap: 4px; min-width: 150px; flex: 1 1 150px; }
+.quality-row select { min-height: 39px; padding: 0 10px; border: 1px solid #4a4b70; border-radius: 9px; background: #222440; color: #e6e3ff; font-size: .8rem; font-weight: 700; }
 .select-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .select-actions p { margin: 0; color: #b1b2c7; font-size: .64rem; line-height: 1.6; }
 .select-actions p span { padding: 0 3px; color: var(--cyan); }
@@ -175,12 +178,17 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 #player-two-panel { grid-area: p2; }
 #player-three-panel { grid-area: p3; }
 #player-four-panel { grid-area: p4; }
+#player-five-panel { grid-area: p5; }
+#player-six-panel { grid-area: p6; }
+.battle-hud.six-fighter-hud { grid-template-areas: "p1 p2 p3 clock p4 p5 p6"; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px repeat(3, minmax(0, 1fr)); width: min(1320px, calc(100% - 32px)); }
 .battle-hud > .match-clock { grid-area: clock; }
 .hud-player { display: grid; grid-template-columns: 10px minmax(62px,1fr) auto; align-items: center; gap: 8px; min-width: 0; }
 .hud-dot { width: 9px; height: 9px; border-radius: 50%; background: #ffd266; box-shadow: 0 0 11px #ffd266; }
 .hud-player-two .hud-dot { background: var(--cyan); box-shadow: 0 0 11px var(--cyan); }
 .hud-player-three .hud-dot { background: #c48cff; box-shadow: 0 0 11px #c48cff; }
 .hud-player-four .hud-dot { background: #ff8296; box-shadow: 0 0 11px #ff8296; }
+.hud-player-five .hud-dot { background: #7fd4ff; box-shadow: 0 0 11px #7fd4ff; }
+.hud-player-six .hud-dot { background: #b8ff6b; box-shadow: 0 0 11px #b8ff6b; }
 .hud-player > div { display: grid; gap: 2px; min-width: 0; }
 .hud-player small, .match-clock span, .match-clock small { color: #a7a9c1; font-size: .55rem; font-weight: 800; letter-spacing: .13em; }
 .hud-player > div strong { overflow: hidden; font-family: "Space Grotesk", sans-serif; font-size: .85rem; text-overflow: ellipsis; white-space: nowrap; }
