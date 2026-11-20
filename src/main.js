@@ -381,7 +381,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.18;
+renderer.toneMappingExposure = 1.28;
 canvasRoot.append(renderer.domElement);
 renderer.domElement.setAttribute("role", "img");
 renderer.domElement.setAttribute("aria-label", "Game scene. Keyboard controls activate after starting a match.");
@@ -1465,8 +1465,8 @@ const characters = {
     build: "heavy",
     accessory: "crown",
     special: "fire",
-    specialName: "Cosmic Flame",
-    specialDescription: "Breathes a devastating cone of starfire.",
+    specialName: "Fire Breed",
+    specialDescription: "Breathes a cone of starfire, then hatches three fire hatchlings.",
     openingLine: "Feel the galaxy's roar!"
   },
   omegabot: {
@@ -2600,6 +2600,26 @@ function makeFighter(kind, index) {
   powerAura.rotation.x = Math.PI / 2;
   powerAura.visible = false;
   visual.userData.powerAura = powerAura;
+  const palette = characters[kind].palette;
+  const gliderMat = material(palette.trim, 0.3, 0.2, { emissive: palette.accent, emissiveIntensity: 0.3 });
+  const glider = new THREE.Group();
+  glider.position.set(0, 2.05, 0);
+  for (const side of [-1, 1]) {
+    const wing = addMesh(glider, new THREE.BoxGeometry(1.25, 0.05, 0.85), gliderMat, [side * 0.62, 0, 0]);
+    wing.rotation.z = side * -0.32;
+  }
+  glider.visible = false;
+  visual.add(glider);
+  visual.userData.glider = glider;
+  if (kind === "galaxydragon") {
+    const wingMat = material(palette.accent, 0.4, 0.1, { emissive: palette.accent, emissiveIntensity: 0.25 });
+    for (const side of [-1, 1]) {
+      const wing = addMesh(visual, new THREE.ConeGeometry(0.85, 1.5, 3), wingMat, [side * 0.55, 1.45, -0.25]);
+      wing.rotation.z = side * 0.5;
+    }
+    const tail = addMesh(visual, new THREE.ConeGeometry(0.18, 1.2, 8), material(palette.primary, 0.36, 0.12), [0, 0.45, -0.85]);
+    tail.rotation.x = Math.PI / 2;
+  }
   const [x, z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4], [-1.3, -3.9], [1.3, 3.9]][index % 6];
   visual.position.set(x, 0.08, z);
   arena.add(visual);
@@ -3243,7 +3263,10 @@ const uniqueSpecialMechanics = {
       t.vx += Math.sign(f.x - t.x) * 5.0;
     }
   },
-  galaxydragon: (f) => { spawnFireBreath(f); spawnMeteorDrop(f, "#ff4d6d", 13, 6.8); },
+  galaxydragon: (f, b, p) => {
+    spawnFireBreath(f);
+    [-1, 0, 1].forEach((s) => launchProjectile(f, { color: "#ff7a1a", emissive: "#ffd166", radius: 0.3, speed: 9, life: 1.4, damage: 7 * p * b, force: 5, vz: s * 1.5 }));
+  },
   omegabot: (f) => {
     applyAreaAbility(f, { radius: 4.6, damage: 12, force: 5.5, color: "#66e4ee", pull: true });
     launchProjectile(f, { color: "#ff3b30", emissive: "#66e4ee", radius: 0.34, speed: 18, life: 1.3, damage: 14, force: 6.8 });
@@ -3526,7 +3549,7 @@ const difficultyLevels = {
   hard: { label: "Hard", speed: 1.12, thinkMin: 0.2, thinkRange: 0.15, strikeRange: 2.35, specialChance: 0.3, jumpChance: 0.18, damage: 1.2, edgeCaution: 0.86 },
   nightmare: { label: "Nightmare", speed: 1.25, thinkMin: 0.1, thinkRange: 0.1, strikeRange: 2.5, specialChance: 0.45, jumpChance: 0.28, damage: 1.4, edgeCaution: 0.8 }
 };
-let cpuDifficulty = "hard";
+let cpuDifficulty = "normal";
 
 function readInput(fighter, index, delta) {
   const isCpu = index > 0 && battleMode === "cpu";
@@ -3623,6 +3646,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.slipTimer = Math.max(0, fighter.slipTimer - delta);
   fighter.powerBoost = Math.max(0, fighter.powerBoost - delta);
   if (fighter.respawn > 0) {
+    fighter.visual.userData.glider.visible = false;
     fighter.respawn -= delta;
     if (fighter.falling) {
       fighter.knockoutElapsed += delta;
@@ -3679,7 +3703,10 @@ function updateFighter(fighter, index, delta, elapsed) {
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
-  fighter.vy -= 23 * delta;
+  const gliding = !fighter.grounded && fighter.vy < -1.5 && !fighter.crouching;
+  fighter.vy -= (gliding ? 9 : 23) * delta;
+  if (gliding) fighter.vy = Math.max(fighter.vy, -4.5);
+  fighter.visual.userData.glider.visible = gliding;
   fighter.x += fighter.vx * delta;
   fighter.y += fighter.vy * delta;
   fighter.z += fighter.vz * delta;
