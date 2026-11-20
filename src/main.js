@@ -2601,16 +2601,6 @@ function makeFighter(kind, index) {
   powerAura.visible = false;
   visual.userData.powerAura = powerAura;
   const palette = characters[kind].palette;
-  const gliderMat = material(palette.trim, 0.3, 0.2, { emissive: palette.accent, emissiveIntensity: 0.3 });
-  const glider = new THREE.Group();
-  glider.position.set(0, 2.05, 0);
-  for (const side of [-1, 1]) {
-    const wing = addMesh(glider, new THREE.BoxGeometry(1.25, 0.05, 0.85), gliderMat, [side * 0.62, 0, 0]);
-    wing.rotation.z = side * -0.32;
-  }
-  glider.visible = false;
-  visual.add(glider);
-  visual.userData.glider = glider;
   if (kind === "galaxydragon") {
     const wingMat = material(palette.accent, 0.4, 0.1, { emissive: palette.accent, emissiveIntensity: 0.25 });
     for (const side of [-1, 1]) {
@@ -3646,7 +3636,6 @@ function updateFighter(fighter, index, delta, elapsed) {
   fighter.slipTimer = Math.max(0, fighter.slipTimer - delta);
   fighter.powerBoost = Math.max(0, fighter.powerBoost - delta);
   if (fighter.respawn > 0) {
-    fighter.visual.userData.glider.visible = false;
     fighter.respawn -= delta;
     if (fighter.falling) {
       fighter.knockoutElapsed += delta;
@@ -3703,10 +3692,7 @@ function updateFighter(fighter, index, delta, elapsed) {
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
-  const gliding = !fighter.grounded && fighter.vy < -1.5 && !fighter.crouching;
-  fighter.vy -= (gliding ? 9 : 23) * delta;
-  if (gliding) fighter.vy = Math.max(fighter.vy, -4.5);
-  fighter.visual.userData.glider.visible = gliding;
+  fighter.vy -= 23 * delta;
   fighter.x += fighter.vx * delta;
   fighter.y += fighter.vy * delta;
   fighter.z += fighter.vz * delta;
