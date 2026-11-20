@@ -1,5 +1,8 @@
 import * as THREE from "three";
 
+const FIGHTER_SCALE = 0.85;
+const MAP_SCALE = 3;
+
 function initializeUniverseCrazy() {
 const canvasRoot = document.querySelector("#scene");
 const graphicsError = document.querySelector("#graphics-error");
@@ -369,7 +372,7 @@ renderer.domElement.tabIndex = 0;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#090c1d");
-scene.fog = new THREE.FogExp2("#0c1027", 0.022);
+scene.fog = new THREE.FogExp2("#0c1027", 0.0035);
 let starField;
 let galaxyBackdrop;
 let titlePlanets;
@@ -377,7 +380,7 @@ let spaceBattle;
 const backgroundShips = [];
 const backgroundShots = [];
 
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(0, 10.8, 25.5);
 camera.lookAt(0, 1.4, 0);
 
@@ -408,6 +411,10 @@ const hitEffects = [];
 const fighters = [];
 const arena = new THREE.Group();
 scene.add(arena);
+const realmBackdrop = new THREE.Group();
+scene.add(realmBackdrop);
+const streamedDecor = [];
+const ARENA_STREAM_RANGE = 70;
 const arenaSurfaces = [];
 const arenaPlanets = [];
 let portalDisc;
@@ -1449,7 +1456,18 @@ function addMesh(parent, geometry, mat, position, scale = null) {
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   parent.add(mesh);
+  if (parent === arena) {
+    geometry.computeBoundingSphere();
+    const largestScale = Math.max(mesh.scale.x, mesh.scale.y, mesh.scale.z);
+    streamedDecor.push({ mesh, center: mesh.position.clone(), radius: geometry.boundingSphere.radius * largestScale });
+  }
   return mesh;
+}
+
+function updateArenaStreaming() {
+  for (const entry of streamedDecor) {
+    entry.mesh.visible = entry.center.distanceTo(camera.position) - entry.radius < ARENA_STREAM_RANGE;
+  }
 }
 
 function disposeObject(object) {
@@ -1802,6 +1820,9 @@ function createArena(index = arenaIndex) {
   secretPowerUp = null;
   disposeObject(arena);
   arena.clear();
+  streamedDecor.length = 0;
+  disposeObject(realmBackdrop);
+  realmBackdrop.clear();
   portalRings = [];
   portalDisc = null;
   secretSeal = null;
@@ -1822,7 +1843,20 @@ function createArena(index = arenaIndex) {
   const stone = material(theme.stone, 0.72, 0.18);
   const floor = material(theme.floor, 0.52, 0.24);
   const trim = material(theme.trim, 0.3, 0.46, { emissive: theme.trim, emissiveIntensity: 0.48 });
-  const radiusVariants = [10.4, 12.6, 9.2, 10.8, 13.1, 9.6, 11.6, 8.9, 12, 10.1];
+  const realmDiscGeometry = new THREE.CylinderGeometry(1, 1, 0.6, 40);
+  const realmCoreGeometry = new THREE.SphereGeometry(1, 20, 14);
+  for (let index = 0; index < 7; index += 1) {
+    const angle = (index / 7) * Math.PI * 2 + random() * 0.4;
+    const distance = 170 + random() * 130;
+    const radius = 18 + random() * 22;
+    const realm = new THREE.Group();
+    realm.position.set(Math.cos(angle) * distance, -30 + random() * 70, Math.sin(angle) * distance);
+    addMesh(realm, realmDiscGeometry, index % 2 ? stone : floor, [0, 0, 0], [radius, 1, radius]);
+    addMesh(realm, realmCoreGeometry, stone, [0, -radius * 0.4, 0], [radius * 0.9, radius * 0.5, radius * 0.9]);
+    realmBackdrop.add(realm);
+  }
+
+  const radiusVariants = [46.8, 56.7, 41.4, 48.6, 59.1, 43.2, 52.2, 39.9, 54, 45.6];
   const planetDepthVariants = [0.38, 0.56, 0.25, 0.42, 0.62, 0.28, 0.48, 0.24, 0.58, 0.34];
   floorRadius = radiusVariants[layout % radiusVariants.length] + random() * 0.4;
   const planetDepth = floorRadius * planetDepthVariants[layout % planetDepthVariants.length];
@@ -1840,6 +1874,22 @@ function createArena(index = arenaIndex) {
   const planetBand = addMesh(arena, new THREE.TorusGeometry(floorRadius * 0.88, 0.085, 8, 72), trim, [0, -planetDepth * 0.58, 0]);
   planetBand.rotation.x = Math.PI / 2;
 
+  const isletGeometries = [new THREE.DodecahedronGeometry(1, 0), new THREE.ConeGeometry(0.7, 2.4, 5)];
+  for (let index = 0; index < 48; index += 1) {
+    const angle = random() * Math.PI * 2;
+    const distance = floorRadius + 5 + random() * 22;
+    const size = 0.8 + random() * 2.4;
+    const isSpire = index % 3 === 0;
+    const islet = addMesh(
+      arena,
+      isletGeometries[isSpire ? 1 : 0],
+      isSpire ? trim : stone,
+      [Math.cos(angle) * distance, -3 + random() * 9, Math.sin(angle) * distance],
+      [size, size * (isSpire ? 1.6 : 0.6), size]
+    );
+    islet.rotation.y = random() * Math.PI * 2;
+  }
+
   for (const radius of [4, floorRadius * 0.74, floorRadius - 0.1]) {
     const ring = addMesh(arena, new THREE.TorusGeometry(radius, radius > floorRadius - 0.2 ? 0.075 : 0.025, 8, 72), trim, [0, 0.08, 0]);
     ring.rotation.x = Math.PI / 2;
@@ -1855,24 +1905,24 @@ function createArena(index = arenaIndex) {
 
   for (const [directionX, directionZ] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
     const stepCount = 4 + (layout % 2);
-    const stepRun = 1.3;
+    const stepRun = 1.3 * MAP_SCALE;
     for (let step = 0; step < stepCount; step += 1) {
       const top = (step + 1) * 0.22;
-      const distance = 1.9 + step * stepRun;
+      const distance = (1.9 + step * 1.3) * MAP_SCALE;
       const x = directionX * distance;
       const z = directionZ * distance;
-      const width = directionX === 0 ? 1.45 : 1.15;
-      const depth = directionZ === 0 ? 1.45 : 1.15;
+      const width = (directionX === 0 ? 1.45 : 1.15) * MAP_SCALE;
+      const depth = (directionZ === 0 ? 1.45 : 1.15) * MAP_SCALE;
       addMesh(arena, new THREE.BoxGeometry(width * 2, top, depth * 2), trim, [x, top / 2, z]);
       addMesh(arena, new THREE.BoxGeometry(width * 1.9, 0.035, depth * 1.9), floor, [x, top + 0.018, z]);
       arenaSurfaces.push({ x, z, top, bottom: 0, halfWidth: width, halfDepth: depth, stair: true, solid: true });
     }
-    const landingDistance = 1.9 + stepCount * stepRun;
+    const landingDistance = (1.9 + stepCount * 1.3) * MAP_SCALE;
     const landingTop = stepCount * 0.22;
     const x = directionX * landingDistance;
     const z = directionZ * landingDistance;
-    const landingWidth = directionX === 0 ? 2.1 : 1.6;
-    const landingDepth = directionZ === 0 ? 1.6 : 2.1;
+    const landingWidth = (directionX === 0 ? 2.1 : 1.6) * MAP_SCALE;
+    const landingDepth = (directionZ === 0 ? 1.6 : 2.1) * MAP_SCALE;
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 2, 0.3, landingDepth * 2), trim, [x, landingTop - 0.15, z]);
     addMesh(arena, new THREE.BoxGeometry(landingWidth * 1.9, 0.04, landingDepth * 1.9), floor, [x, landingTop + 0.02, z]);
     arenaSurfaces.push({ x, z, top: landingTop + 0.04, bottom: Math.max(0, landingTop - 0.3), halfWidth: landingWidth, halfDepth: landingDepth, solid: true });
@@ -1884,8 +1934,8 @@ function createArena(index = arenaIndex) {
     const distance = floorRadius * (0.43 + random() * 0.1);
     const x = Math.cos(angle) * distance;
     const z = Math.sin(angle) * distance;
-    const width = 1.2 + random() * 0.8;
-    const depth = 1.2 + random() * 0.8;
+    const width = (1.2 + random() * 0.8) * MAP_SCALE;
+    const depth = (1.2 + random() * 0.8) * MAP_SCALE;
     const top = 0.8 + random() * 1.2;
     addMesh(arena, new THREE.CylinderGeometry(0.16, 0.24, top, 6), stone, [x, top / 2, z]);
     addMesh(arena, new THREE.CylinderGeometry(1, 0.92, 0.28, 8), trim, [x, top - 0.14, z], [width, 1, depth]);
@@ -2357,7 +2407,8 @@ function createFighterVisual(kind) {
     }
   }
 
-  if (kind === "entity") root.scale.setScalar(1.4);
+  if (kind === "entity") root.scale.setScalar(1.4 * FIGHTER_SCALE);
+  else root.scale.setScalar(FIGHTER_SCALE);
   root.userData.baseScale = root.scale.clone();
 
   root.userData.body = body;
@@ -2486,7 +2537,7 @@ function makeFighter(kind, index) {
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
-    attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
+    attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, wallSlide: false, wallDown: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, speechBubble: null, speechTimer: 0
   };
 }
@@ -2565,7 +2616,7 @@ function updateControlsHint() {
   }).join(" · ");
   const controls = battleMode === "cpu"
     ? `Solo vs. 3 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
-    : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Specials: ${localSpecials}`;
+    : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Crouch: C / R-Ctrl / B / Num3 · Specials: ${localSpecials}`;
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
 }
@@ -3256,6 +3307,11 @@ function hitTarget(attacker, target, damage, force) {
   target.vy = Math.max(target.vy, 2.8 + target.damage * 0.022);
   target.vz += Math.sign(target.z - attacker.z || 1) * 1.3;
   target.grounded = false;
+  if (target.wallSlide || target.wallDown) {
+    target.wallSlide = false;
+    target.wallDown = false;
+    target.slipTimer = 0.85;
+  }
   target.hitFlash = 0.24;
   spawnImpact(target, damage >= 10);
   hudDirty = true;
@@ -3301,13 +3357,13 @@ function attack(fighter, target, special = false) {
   fighter.kickPose = 0.36;
 
   if (!target) {
-    const reach = 2.15;
+    const reach = 2.15 * FIGHTER_SCALE;
     target = fighters
       .filter((opponent) => opponent !== fighter && !opponent.eliminated && opponent.respawn <= 0)
       .filter((opponent) => {
         const dx = opponent.x - fighter.x;
         const dz = opponent.z - fighter.z;
-        return Math.hypot(dx, dz) < reach && Math.abs(dz) < 1.75 && dx * fighter.facing > -0.65 && Math.abs(opponent.y - fighter.y) < 1.5;
+        return Math.hypot(dx, dz) < reach && Math.abs(dz) < 1.75 * FIGHTER_SCALE && dx * fighter.facing > -0.65 && Math.abs(opponent.y - fighter.y) < 1.5 * FIGHTER_SCALE;
       })
       .sort((a, b) => (a.x - fighter.x) ** 2 + (a.z - fighter.z) ** 2 - (b.x - fighter.x) ** 2 - (b.z - fighter.z) ** 2)[0]
       || nearestOpponent(fighter);
@@ -3315,10 +3371,10 @@ function attack(fighter, target, special = false) {
   if (!target) return;
   const dx = target.x - fighter.x;
   const dz = target.z - fighter.z;
-  const inReach = Math.hypot(dx, dz) < 2.15;
+  const inReach = Math.hypot(dx, dz) < 2.15 * FIGHTER_SCALE;
   const inFront = dx * fighter.facing > -0.65;
-  const inHeight = Math.abs(target.y - fighter.y) < 1.5;
-  if (inReach && Math.abs(dz) < 1.75 && inFront && inHeight) {
+  const inHeight = Math.abs(target.y - fighter.y) < 1.5 * FIGHTER_SCALE;
+  if (inReach && Math.abs(dz) < 1.75 * FIGHTER_SCALE && inFront && inHeight) {
     const boost = fighter.powerBoost > 0 ? 1.7 : 1;
     hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 4.4);
   }
@@ -3361,6 +3417,8 @@ function respawn(fighter, index) {
     return;
   }
   [fighter.x, fighter.z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4]][index % 4];
+  fighter.wallSlide = false;
+  fighter.wallDown = false;
   fighter.y = 0.08;
   fighter.z = index === 0 ? 1.1 : -0.6;
   fighter.vx = 0;
@@ -3383,16 +3441,17 @@ function readInput(fighter, index, delta) {
   const pressed = (...codes) => codes.some((code) => keys.has(code) || virtualKeys.has(code));
   const tapped = (...codes) => codes.some((code) => justPressed.has(code));
   const playerControls = [
-    { horizontal: ["KeyA", "KeyD"], depth: ["KeyW", "KeyS"], jump: "Space", strike: "KeyJ", special: "KeyK" },
-    { horizontal: ["ArrowLeft", "ArrowRight"], depth: ["ArrowUp", "ArrowDown"], jump: "ArrowUp", strike: "Enter", special: "ShiftRight" },
-    { horizontal: ["KeyF", "KeyH"], depth: ["KeyT", "KeyG"], jump: "KeyR", strike: "KeyY", special: "KeyU" },
-    { horizontal: ["Numpad4", "Numpad6"], depth: ["Numpad8", "Numpad5"], jump: "Numpad0", strike: "Numpad1", special: "Numpad2" }
+    { horizontal: ["KeyA", "KeyD"], depth: ["KeyW", "KeyS"], jump: "Space", strike: "KeyJ", special: "KeyK", crouch: "KeyC" },
+    { horizontal: ["ArrowLeft", "ArrowRight"], depth: ["ArrowUp", "ArrowDown"], jump: "ArrowUp", strike: "Enter", special: "ShiftRight", crouch: "ControlRight" },
+    { horizontal: ["KeyF", "KeyH"], depth: ["KeyT", "KeyG"], jump: "KeyR", strike: "KeyY", special: "KeyU", crouch: "KeyB" },
+    { horizontal: ["Numpad4", "Numpad6"], depth: ["Numpad8", "Numpad5"], jump: "Numpad0", strike: "Numpad1", special: "Numpad2", crouch: "Numpad3" }
   ][index];
   let horizontal = 0;
   let depth = 0;
   let jump = false;
   let strike = false;
   let special = false;
+  let crouchHeld = false;
 
   if (!isCpu) {
     const arrowAliases = index === 0 && battleMode === "cpu";
@@ -3406,6 +3465,7 @@ function readInput(fighter, index, delta) {
     jump = pressed(...jumpKeys) && tapped(...jumpKeys);
     strike = tapped(playerControls.strike, ...(arrowAliases ? ["Enter"] : []));
     special = tapped(playerControls.special, ...(arrowAliases ? ["ShiftRight"] : []));
+    crouchHeld = pressed(playerControls.crouch);
   } else {
     const target = nearestOpponent(fighter);
     if (!target) return;
@@ -3422,7 +3482,11 @@ function readInput(fighter, index, delta) {
     }
   }
 
-  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1);
+  if (crouchHeld && fighter.grounded) {
+    horizontal = 0;
+    depth = 0;
+  }
+  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1) * 1.5;
   fighter.vx = (fighter.vx + horizontal * speed * delta * 8) * Math.exp(-(horizontal ? 3.2 : 7) * delta);
   fighter.vz = (fighter.vz + depth * speed * delta * 6) * Math.exp(-(depth ? 3.8 : 7) * delta);
   fighter.vx = THREE.MathUtils.clamp(fighter.vx, -speed, speed);
@@ -3431,7 +3495,7 @@ function readInput(fighter, index, delta) {
   if (Math.abs(fighter.vz) < 0.035) fighter.vz = 0;
 
   if (horizontal) fighter.facing = Math.sign(horizontal);
-  fighter.crouching = fighter.grounded && depth > 0.35 && Math.abs(horizontal) < 0.25;
+  fighter.crouching = fighter.grounded && (crouchHeld || (depth > 0.35 && Math.abs(horizontal) < 0.25));
   if (jump && fighter.grounded) {
     fighter.vy = 9.2;
     fighter.grounded = false;
@@ -3512,7 +3576,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  if (fighter.slipTimer <= 0) readInput(fighter, index, delta);
+  if (fighter.slipTimer <= 0 && !fighter.wallDown) readInput(fighter, index, delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -3528,8 +3592,8 @@ function updateFighter(fighter, index, delta, elapsed) {
     document.querySelector("#screen-reader-status").textContent = "Secret power-up collected. Your attacks are stronger for eight seconds.";
   }
 
-  const fighterBodyRadius = 0.42;
-  const fighterHeight = 1.85;
+  const fighterBodyRadius = 0.42 * FIGHTER_SCALE;
+  const fighterHeight = 1.85 * FIGHTER_SCALE;
   fighter.grounded = false;
 
   // Step up stairs smoothly while grounded
@@ -3616,7 +3680,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     const dx = fighter.x - other.x;
     const dz = fighter.z - other.z;
     const dist = Math.hypot(dx, dz);
-    const minSep = 0.86;
+    const minSep = 0.86 * FIGHTER_SCALE;
     if (dist > 0.001 && dist < minSep) {
       const push = (minSep - dist) * 0.5;
       fighter.x += (dx / dist) * push;
@@ -3626,7 +3690,32 @@ function updateFighter(fighter, index, delta, elapsed) {
     }
   }
 
-  if (fighter.y < -2.8 || edgeDistance > floorRadius + 1.35) {
+  // The arena rim is a wall: fighters stop at it, slide down when airborne, and stay down until punched
+  const wallRadius = floorRadius - fighterBodyRadius;
+  const rimDistance = Math.hypot(fighter.x, fighter.z);
+  if (rimDistance > wallRadius) {
+    const normalX = fighter.x / rimDistance;
+    const normalZ = fighter.z / rimDistance;
+    fighter.x = normalX * wallRadius;
+    fighter.z = normalZ * wallRadius;
+    if (fighter.vx * normalX > 0) fighter.vx = 0;
+    if (fighter.vz * normalZ > 0) fighter.vz = 0;
+    if (fighter.grounded && fighter.wallSlide) {
+      fighter.wallSlide = false;
+      fighter.wallDown = true;
+    } else if (!fighter.grounded) {
+      fighter.wallSlide = true;
+      fighter.vy = Math.max(fighter.vy, -2.2);
+    }
+  } else if (!fighter.wallDown) {
+    fighter.wallSlide = false;
+  }
+  if (fighter.wallDown) {
+    fighter.vx = 0;
+    fighter.vz = 0;
+  }
+
+  if (fighter.y < -2.8) {
     beginKnockout(fighter, "drifts out into space!");
     return;
   }
@@ -3817,7 +3906,7 @@ function updateClock(delta) {
 }
 
 function updateCamera(delta) {
-  const arenaCameraDistance = Math.max(24, floorRadius * 2.7);
+  const arenaCameraDistance = Math.max(22, floorRadius * 0.45);
   if (portalIntroActive) {
     // Zoom in on the fighter currently dropping from the sky or posing on the court
     const activeActor = fighters.find((fighter) => fighter.portalDelay === 0 && fighter.portalEntry > 0)
@@ -3857,12 +3946,12 @@ function updateCamera(delta) {
   const playerAlive = player && !player.eliminated;
   const followX = playerAlive ? player.x : centerX;
   const followZ = playerAlive ? player.z : 0;
-  const targetX = THREE.MathUtils.clamp(followX * 0.6, -6, 6);
-  const targetZ = THREE.MathUtils.clamp(followZ * 0.5, -3, 3);
+  const targetX = THREE.MathUtils.clamp(followX * 0.8, -floorRadius, floorRadius);
+  const targetZ = THREE.MathUtils.clamp(followZ * 0.8, -floorRadius, floorRadius);
   camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 2.4, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.y = THREE.MathUtils.damp(camera.position.y, 11.2, 2, delta) + (Math.random() - 0.5) * cameraShake;
+  camera.position.y = THREE.MathUtils.damp(camera.position.y, 7.6, 2, delta) + (Math.random() - 0.5) * cameraShake;
   camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + targetZ + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 2, delta);
-  camera.lookAt(targetX * 0.68, 1.35, targetZ * 0.4);
+  camera.lookAt(followX, 1.35, followZ);
 }
 
 function animatePortal(elapsed, delta) {
@@ -3980,6 +4069,8 @@ function frame(timestamp = 0) {
     if (cutsceneTimer === 0) cutsceneOverlay.hidden = true;
   }
   justPressed.clear();
+  realmBackdrop.rotation.y += delta * 0.01;
+  updateArenaStreaming();
   if (!graphicsContextLost) renderer.render(scene, camera);
   animationFrame = requestAnimationFrame(frame);
 }
@@ -4165,8 +4256,8 @@ window.addEventListener("keydown", (event) => {
   const supported = [
     "KeyA", "KeyD", "KeyW", "KeyS", "Space", "KeyJ", "KeyK",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "ShiftRight",
-    "KeyF", "KeyH", "KeyT", "KeyG", "KeyR", "KeyY", "KeyU",
-    "Numpad0", "Numpad1", "Numpad2", "Numpad4", "Numpad5", "Numpad6", "Numpad8"
+    "KeyF", "KeyH", "KeyT", "KeyG", "KeyR", "KeyY", "KeyU", "KeyC", "KeyB", "ControlRight",
+    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6", "Numpad8"
   ];
   if (!supported.includes(event.code)) return;
   if (matchActive) event.preventDefault();
