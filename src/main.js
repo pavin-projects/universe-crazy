@@ -831,9 +831,9 @@ const characters = {
     power: 0.96,
     build: "human",
     accessory: "bow",
-    special: "phase",
-    specialName: "Acro Blink",
-    specialDescription: "Blinks behind a rival for a quick hit.",
+    special: "starshower",
+    specialName: "Star Shower",
+    specialDescription: "Calls a rain of stars down on a rival.",
     openingLine: "Watch this!"
   },
   cindy: {
@@ -938,9 +938,9 @@ const characters = {
     speed: 7.6,
     power: 1.12,
     build: "cartoon",
-    special: "banana",
-    specialName: "Cartoon Gag",
-    specialDescription: "Drops a classic slipping banana peel!",
+    special: "anvil",
+    specialName: "Anvil Drop",
+    specialDescription: "Drops a cartoon anvil straight onto a rival.",
     openingLine: "That's all, folks!"
   },
   lostapple: {
@@ -1296,9 +1296,9 @@ const characters = {
     power: 0.94,
     build: "human",
     accessory: "bow",
-    special: "phase",
-    specialName: "Hop Warp",
-    specialDescription: "Blinks behind a rival in one hop.",
+    special: "volt",
+    specialName: "Volt Chain",
+    specialDescription: "Arcs lightning from a rival to the next nearest fighter.",
     openingLine: "Hop to it!"
   },
   goldenknight: {
@@ -1327,9 +1327,9 @@ const characters = {
     speed: 6.8,
     power: 1.1,
     build: "bopper",
-    special: "banana",
-    specialName: "Slippery Fondue",
-    specialDescription: "Drops a slippery gag on the arena.",
+    special: "boulder",
+    specialName: "Fondue Boulder",
+    specialDescription: "Rolls a heavy cheese boulder across the arena.",
     openingLine: "Say cheese!"
   },
   discoagent: {
@@ -1358,9 +1358,9 @@ const characters = {
     speed: 6.4,
     power: 1.12,
     build: "stubby",
-    special: "bite",
-    specialName: "Timber Bite",
-    specialDescription: "Chomps forward with iron teeth.",
+    special: "pound",
+    specialName: "Timber Pound",
+    specialDescription: "Slams the ground and sends shockwaves both ways.",
     openingLine: "Timber!"
   },
   starjelly: {
@@ -1982,7 +1982,7 @@ function createArena(index = arenaIndex) {
     addMesh(arena, new THREE.CylinderGeometry(0.93, 0.9, 0.05, 8), floor, [x, top - 0.025, z], [width, 1, depth]);
     const platformRing = addMesh(arena, new THREE.TorusGeometry(width * 0.72, 0.035, 6, 24), rune, [x, top + 0.01, z]);
     platformRing.rotation.x = Math.PI / 2;
-    arenaSurfaces.push({ x, z, top, bottom: top - 0.32, halfWidth: width * 0.9, halfDepth: depth * 0.9, solid: true, round: true });
+    arenaSurfaces.push({ x, z, top, bottom: top - 0.32, halfWidth: width, halfDepth: depth, solid: true, round: true });
   }
 
   const crystal = material(theme.trim, 0.38, 0.35);
@@ -3084,6 +3084,56 @@ function spawnMeteorDrop(fighter, color, damage, force) {
   spawnAbilityRing(fighter, color, 0.4);
 }
 
+function launchProjectileAt(fighter, pose, options) {
+  launchProjectile({ ...fighter, ...pose }, options);
+  projectiles[projectiles.length - 1].owner = fighter;
+}
+
+function spawnAnvilDrop(fighter, color, damage, force) {
+  const target = nearestOpponent(fighter) || fighter;
+  launchProjectileAt(fighter, { x: target.x, y: target.y + 0.9, z: target.z }, { shape: "star", color, emissive: color, radius: 0.5, speed: 0, vy: -6, life: 0.6, damage, force });
+  spawnAbilityRing(fighter, color, 0.35);
+}
+
+function spawnBoulderRoll(fighter, color, damage, force) {
+  launchProjectile(fighter, { shape: "sphere", color, emissive: color, radius: 0.72, speed: 5.2, life: 3, damage, force });
+  spawnAbilityRing(fighter, color, 0.4);
+}
+
+function spawnGroundPound(fighter, color, damage, force) {
+  fighter.vy = 7;
+  fighter.grounded = false;
+  [-1, 1].forEach((side) => launchProjectileAt(fighter, { facing: side }, { shape: "wave", color, emissive: color, radius: 0.46, speed: 9, life: 1.3, damage, force }));
+  spawnAbilityRing(fighter, color, 0.4);
+}
+
+function spawnStarShower(fighter, color, damage, force) {
+  const target = nearestOpponent(fighter) || fighter;
+  [-1.2, -0.6, 0, 0.6, 1.2].forEach((offset) => launchProjectileAt(fighter, { x: target.x, y: target.y + 2.2, z: target.z + offset }, { shape: "star", color, emissive: color, radius: 0.26, speed: 0, vy: -6, life: 0.6, damage, force }));
+  spawnAbilityRing(fighter, color, 0.35);
+}
+
+function spawnVoltChain(fighter, color, damage, force) {
+  spawnAbilityRing(fighter, color, 0.3);
+  const first = nearestOpponent(fighter);
+  if (!first || Math.hypot(first.x - fighter.x, first.z - fighter.z) > 5) return;
+  hitTarget(fighter, first, damage, force);
+  let second = null;
+  let bestDistance = 4.5;
+  for (const target of fighters) {
+    if (target === fighter || target === first || target.eliminated || target.respawn > 0) continue;
+    const distance = Math.hypot(target.x - first.x, target.z - first.z);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      second = target;
+    }
+  }
+  if (second) {
+    spawnAbilityRing(second, color, 0.3);
+    hitTarget(fighter, second, damage * 0.7, force);
+  }
+}
+
 const uniqueSpecialMechanics = {
   bumble: (f) => launchProjectile(f, { color: "#ffe36f", emissive: "#ff9d35", speed: 15, damage: 10, force: 4.8 }),
   robot: (f, b, p) => {
@@ -3146,7 +3196,7 @@ const uniqueSpecialMechanics = {
   robert: (f, b, p) => spawnShieldBurst(f, "#d4e6ff", 10, 3.4, 12 * p * b, 6.4),
   bopper: (f) => spawnMeteorDrop(f, "#ffe28a", 14, 7.0),
   pewstickman: (f) => [0, 0.18].forEach((oz, i) => launchProjectile(f, { color: "#4cf2ff", emissive: "#ff59b8", radius: 0.18, speed: 18 + i * 3, life: 1.2, damage: 7.5, force: 4.0, offsetZ: oz })),
-  liz: (f, b, p) => spawnSkyUppercut(f, "#ffe0f4", 11.5 * p * b, 5.8, 10.5),
+  liz: (f, b, p) => spawnStarShower(f, "#ffe0f4", 11.5 * p * b, 5.8),
   cindy: (f) => launchProjectile(f, { shape: "star", color: "#fff0a8", emissive: "#ff7ad9", radius: 0.3, speed: 9.5, life: 2.2, damage: 11.5, force: 5.0, homing: true }),
   munchy: (f, b, p) => {
     f.hp = Math.min(100, f.hp + 12);
@@ -3166,7 +3216,7 @@ const uniqueSpecialMechanics = {
   },
   alieny: (f) => launchProjectile(f, { color: "#c7ff9c", emissive: "#7d5cff", radius: 0.34, speed: 8.8, life: 2.4, damage: 12, force: 5.5, homing: true }),
   dops: (f) => launchProjectile(f, { shape: "wave", color: "#d4fff8", emissive: "#4cd9c4", radius: 0.56, speed: 10.5, life: 1.6, damage: 12.5, force: 6.8 }),
-  cartoonguy: (f) => launchProjectile(f, { shape: "banana", color: "#ffffff", emissive: "#ffdf6b", radius: 0.38, speed: 7.8, life: 7.5, damage: 8, force: 5.5, hazard: true }),
+  cartoonguy: (f) => spawnAnvilDrop(f, "#ffffff", 12, 7.5),
   lostapple: (f) => spawnMeteorDrop(f, "#e03131", 13.5, 6.8),
   jim: (f) => launchProjectile(f, { shape: "wave", color: "#93c5fd", emissive: "#3b82f6", radius: 0.52, speed: 9.2, life: 1.8, damage: 11.5, force: 6.2 }),
   immy: (f, b, p) => {
@@ -3217,11 +3267,11 @@ const uniqueSpecialMechanics = {
   bubblepop: (f) => launchProjectile(f, { color: "#74e8ff", emissive: "#ff8ef2", radius: 0.48, speed: 7.5, life: 2.4, damage: 11.5, force: 6.5, homing: true }),
   laserbear: (f) => launchProjectile(f, { color: "#ff5252", emissive: "#ffe066", radius: 0.32, speed: 20, life: 1.0, damage: 15, force: 7.2 }),
   turbosnail: (f) => launchProjectile(f, { shape: "wave", color: "#ff9e5e", emissive: "#66e4ee", radius: 0.42, speed: 14, life: 1.9, damage: 12, force: 6.0, boomerang: true }),
-  voltbunny: (f, b, p) => spawnSkyUppercut(f, "#5cf2ff", 12 * p * b, 5.8, 11.5),
+  voltbunny: (f, b, p) => spawnVoltChain(f, "#5cf2ff", 12 * p * b, 5.8),
   goldenknight: (f, b, p) => spawnShieldBurst(f, "#ffd43b", 15, 4.2, 14.5 * p * b, 7.4),
-  cheesewizard: (f) => launchProjectile(f, { shape: "banana", color: "#ffd93b", emissive: "#ff922b", radius: 0.4, speed: 7.2, life: 8, damage: 8.5, force: 5.5, hazard: true }),
+  cheesewizard: (f) => spawnBoulderRoll(f, "#ffd93b", 11, 6.8),
   discoagent: (f) => [-2, 0, 2].forEach((s) => launchProjectile(f, { shape: "star", color: "#d966ff", emissive: "#5cf2ff", radius: 0.25, speed: 12, life: 1.6, damage: 8, force: 4.4, vz: s * 1.8 })),
-  ironbeaver: (f, b, p) => spawnSkyUppercut(f, "#e6ccb2", 13 * p * b, 6.2, 9.2),
+  ironbeaver: (f, b, p) => spawnGroundPound(f, "#e6ccb2", 13 * p * b, 6.2),
   starjelly: (f) => applyAreaAbility(f, { radius: 4.5, damage: 12.5, force: 6.0, color: "#7cf2ff", pull: true }),
   cometkid: (f) => spawnMeteorDrop(f, "#ff884d", 14.5, 7.2),
   spookybat: (f, b, p) => {
@@ -3627,9 +3677,11 @@ function readInput(fighter, index, delta) {
   if (special) attack(fighter, null, true);
 }
 
-// Round surfaces (cylinder pillars) use a radial check; box surfaces (stairs, landings) use axis checks.
+// Round surfaces (cylinder tables) use an elliptical check matching their visible rim; box surfaces (stairs, landings) use axis checks.
 function isOverSurface(surface, x, z, margin) {
-  if (surface.round) return Math.hypot(x - surface.x, z - surface.z) <= surface.halfWidth + margin;
+  if (surface.round) {
+    return Math.hypot((x - surface.x) / (surface.halfWidth * 0.92 + margin), (z - surface.z) / (surface.halfDepth * 0.92 + margin)) <= 1;
+  }
   return Math.abs(x - surface.x) <= surface.halfWidth + margin && Math.abs(z - surface.z) <= surface.halfDepth + margin;
 }
 
@@ -3749,44 +3801,59 @@ function updateFighter(fighter, index, delta, elapsed) {
   }
 
   // Solid side-wall & underside hitboxes on raised surfaces so fighters cannot clip through blocks or platforms
-  for (const surface of arenaSurfaces) {
-    if (!surface.solid) continue;
-    const offsetX = fighter.x - surface.x;
-    const offsetZ = fighter.z - surface.z;
-    const radialDistance = surface.round ? Math.hypot(offsetX, offsetZ) || 0.001 : 0;
-    const overlapX = surface.round
-      ? surface.halfWidth + fighterBodyRadius - radialDistance
-      : surface.halfWidth + fighterBodyRadius - Math.abs(offsetX);
-    const overlapZ = surface.round
-      ? overlapX
-      : surface.halfDepth + fighterBodyRadius - Math.abs(offsetZ);
-    if (overlapX <= 0 || overlapZ <= 0) continue;
+  const resolveSolidSurfaces = () => {
+    for (const surface of arenaSurfaces) {
+      if (!surface.solid) continue;
+      const offsetX = fighter.x - surface.x;
+      const offsetZ = fighter.z - surface.z;
+      const reachX = surface.round ? surface.halfWidth * 0.92 : surface.halfWidth + fighterBodyRadius;
+      const reachZ = surface.round ? surface.halfDepth * 0.92 : surface.halfDepth + fighterBodyRadius;
+      const normalized = Math.hypot(offsetX / reachX, offsetZ / reachZ);
+      const insideFootprint = surface.round ? normalized < 1 : Math.abs(offsetX) < reachX && Math.abs(offsetZ) < reachZ;
+      if (!insideFootprint) continue;
 
-    if (fighter.vy > 0 && previousY + fighterHeight <= surface.bottom + 0.08 && fighter.y + fighterHeight > surface.bottom) {
-      fighter.y = surface.bottom - fighterHeight;
-      fighter.vy = 0;
-      continue;
-    }
+      if (fighter.vy > 0 && previousY + fighterHeight <= surface.bottom + 0.08 && fighter.y + fighterHeight > surface.bottom) {
+        fighter.y = surface.bottom - fighterHeight;
+        fighter.vy = 0;
+        continue;
+      }
 
-    if (fighter.y < surface.top - 0.25 && fighter.y + fighterHeight > surface.bottom + 0.05) {
+      if (fighter.y >= surface.top - 0.05 || fighter.y + fighterHeight <= surface.bottom + 0.05) continue;
+
       if (surface.round) {
-        const normalX = offsetX / radialDistance;
-        const normalZ = offsetZ / radialDistance;
-        fighter.x += normalX * overlapX;
-        fighter.z += normalZ * overlapX;
-        if (fighter.vx * normalX < 0) fighter.vx = 0;
-        if (fighter.vz * normalZ < 0) fighter.vz = 0;
-      } else if (overlapX < overlapZ) {
-        const pushDir = fighter.x >= surface.x ? 1 : -1;
-        fighter.x += pushDir * overlapX;
-        if (fighter.vx * pushDir < 0) fighter.vx = 0;
+        // Project onto the ellipse edge along the radial direction; this matches the cylinder's visible rim.
+        let ox = offsetX;
+        let oz = offsetZ;
+        let distance = normalized;
+        if (distance < 0.001) {
+          ox = reachX;
+          oz = 0;
+          distance = 1;
+        }
+        const newX = ox / distance;
+        const newZ = oz / distance;
+        const pushX = newX - offsetX;
+        const pushZ = newZ - offsetZ;
+        fighter.x = surface.x + newX;
+        fighter.z = surface.z + newZ;
+        if (fighter.vx * pushX < 0) fighter.vx = 0;
+        if (fighter.vz * pushZ < 0) fighter.vz = 0;
       } else {
-        const pushDir = fighter.z >= surface.z ? 1 : -1;
-        fighter.z += pushDir * overlapZ;
-        if (fighter.vz * pushDir < 0) fighter.vz = 0;
+        const overlapX = reachX - Math.abs(offsetX);
+        const overlapZ = reachZ - Math.abs(offsetZ);
+        if (overlapX < overlapZ) {
+          const pushDir = offsetX >= 0 ? 1 : -1;
+          fighter.x = surface.x + pushDir * reachX;
+          if (fighter.vx * pushDir < 0) fighter.vx = 0;
+        } else {
+          const pushDir = offsetZ >= 0 ? 1 : -1;
+          fighter.z = surface.z + pushDir * reachZ;
+          if (fighter.vz * pushDir < 0) fighter.vz = 0;
+        }
       }
     }
-  }
+  };
+  resolveSolidSurfaces();
 
   // Solid main arena floor hitbox (cannot fall/clip through ground)
   const edgeDistance = Math.hypot(fighter.x, fighter.z);
@@ -3812,6 +3879,7 @@ function updateFighter(fighter, index, delta, elapsed) {
       other.z -= (dz / dist) * push;
     }
   }
+  resolveSolidSurfaces();
 
   // Past the arena edge there is no floor, so fighters fall and lose a stock when they drop out of the air
   if (fighter.y < -2.8) {
