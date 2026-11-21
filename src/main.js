@@ -348,7 +348,7 @@ document.addEventListener("fullscreenchange", updateFullscreenButton);
 updateFullscreenButton();
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
 } catch (error) {
   if (!(error instanceof Error) || !/webgl|context/i.test(error.message)) throw error;
   graphicsErrorMessage.textContent = "3D graphics could not start. Close other 3D tabs or enable browser hardware acceleration, then reload.";
@@ -527,6 +527,9 @@ let animationFrame = 0;
 let lastFrameTime = 0;
 let joystickPointerId = null;
 let cameraShake = 0;
+// Briefly frames whoever just used a special; cleared automatically so the camera returns to the player
+let specialCameraFocus = null;
+const specialCameraDuration = 2.2;
 let graphicsContextLost = false;
 let resumeAfterGraphicsRestore = false;
 
@@ -2494,6 +2497,9 @@ function animateBlink(visual, elapsed) {
   });
 }
 
+// World-space size of the floating speech bubble sprite (canvas is 768x256)
+const SPEECH_BUBBLE_WIDTH = 4.2;
+const SPEECH_BUBBLE_HEIGHT = 1.4;
 function createSpeechBubble(fighter, text) {
   if (fighter.speechBubble) {
     fighter.visual.remove(fighter.speechBubble);
@@ -2502,39 +2508,40 @@ function createSpeechBubble(fighter, text) {
     fighter.speechBubble.geometry.dispose();
   }
   const bubbleCanvas = document.createElement("canvas");
-  bubbleCanvas.width = 560;
-  bubbleCanvas.height = 176;
+  bubbleCanvas.width = 768;
+  bubbleCanvas.height = 256;
   const context = bubbleCanvas.getContext("2d");
   if (!context) throw new Error("Could not draw a fighter speech bubble.");
   context.fillStyle = "#fffdf7";
   context.strokeStyle = "#17152b";
-  context.lineWidth = 10;
+  context.lineWidth = 12;
   context.beginPath();
-  context.roundRect(14, 10, 532, 126, 36);
+  context.roundRect(18, 14, 732, 176, 48);
   context.fill();
   context.stroke();
   context.strokeStyle = characters[fighter.kind].palette.trim;
-  context.lineWidth = 5;
+  context.lineWidth = 6;
   context.stroke();
   context.fillStyle = "#fffdf7";
   context.beginPath();
-  context.moveTo(250, 132);
-  context.lineTo(280, 170);
-  context.lineTo(310, 132);
+  context.moveTo(340, 186);
+  context.lineTo(384, 244);
+  context.lineTo(428, 186);
   context.closePath();
   context.fill();
   context.strokeStyle = "#17152b";
-  context.lineWidth = 6;
+  context.lineWidth = 8;
   context.stroke();
   context.fillStyle = "#141126";
-  context.font = "800 38px Segoe UI, sans-serif";
+  context.font = "800 52px Segoe UI, sans-serif";
   context.textAlign = "center";
   context.textBaseline = "middle";
-  context.fillText(text, 280, 73, 475);
+  context.fillText(text, 384, 102, 680);
   const texture = new THREE.CanvasTexture(bubbleCanvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const bubble = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  bubble.scale.set(3.5, 1.1, 1);
+  bubble.scale.set(SPEECH_BUBBLE_WIDTH, SPEECH_BUBBLE_HEIGHT, 1);
   bubble.position.set(0, 3.25, 0);
   bubble.renderOrder = 15;
   fighter.visual.add(bubble);
@@ -2555,7 +2562,7 @@ function updateSpeechBubble(fighter, delta, elapsed) {
   }
   const scaleX = Math.max(0.2, fighter.visual.scale.x || 1);
   const scaleY = Math.max(0.2, fighter.visual.scale.y || 1);
-  fighter.speechBubble.scale.set(3.5 / scaleX, 1.1 / scaleY, 1);
+  fighter.speechBubble.scale.set(SPEECH_BUBBLE_WIDTH / scaleX, SPEECH_BUBBLE_HEIGHT / scaleY, 1);
   fighter.speechBubble.position.y = (3.15 + Math.sin(elapsed * 3 + fighter.cpuThinkTime) * 0.08) / scaleY;
   fighter.speechBubble.material.opacity = Math.min(1, fighter.speechTimer / 0.4);
 }
@@ -2799,6 +2806,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   camera.lookAt(0, 3.6, -4.2);
   portalIntroActive = true;
   matchTime = 180;
+  specialCameraFocus = null;
   displayedSecond = -1;
   matchActive = true;
   matchEnded = false;
@@ -3303,6 +3311,8 @@ function useSpecialAbility(fighter) {
   document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
   createSpeechBubble(fighter, `${character.specialName}!`);
   fighter.poseTimer = 0.72;
+  specialCameraFocus = { fighter, timer: specialCameraDuration };
+  playCutscene("SPECIAL ABILITY", character.specialName.toUpperCase(), `${character.name}: ${character.specialDescription}`, specialCameraDuration);
   const boost = fighter.powerBoost > 0 ? 1.7 : 1;
   const handler = uniqueSpecialMechanics[fighter.kind];
   if (!handler) throw new Error(`Unknown special ability for ${character.name}.`);
@@ -3531,6 +3541,7 @@ function respawn(fighter, index) {
       document.querySelector("#battle-status").textContent = `${characters[fighter.kind].name} is out!`;
       const nextRival = fighters.find((item, fighterIndex) => fighterIndex > 0 && !item.eliminated);
       if (nextRival) setMusicScene("battle", nextRival.kind);
+      playCutscene("ELIMINATED", `${characters[fighter.kind].name.toUpperCase()} IS OUT!`, `${remaining.length} fighters still standing`, 2);
     }
     updateHud();
     return;
@@ -4105,12 +4116,19 @@ function updateCamera(delta) {
   // The camera always follows the human player; only fall back to the group when the player is out
   const player = fighters[0];
   const playerAlive = player && !player.eliminated;
-  const followX = playerAlive ? player.x : centerX;
-  const followZ = playerAlive ? player.z : 0;
-  // No clamp: the player must stay in view even when walking or falling past the rim
+  // A special's cutscene frames its caster for a moment, then the camera eases straight back to the player
+  let subject = playerAlive ? player : null;
+  if (specialCameraFocus) {
+    specialCameraFocus.timer -= delta;
+    if (specialCameraFocus.timer <= 0 || specialCameraFocus.fighter.eliminated) specialCameraFocus = null;
+    else subject = specialCameraFocus.fighter;
+  }
+  const followX = subject ? subject.x : centerX;
+  const followZ = subject ? subject.z : 0;
+  // No clamp: the subject must stay in view even when walking or falling past the rim
   const focusX = followX;
   const focusZ = followZ;
-  const followY = playerAlive ? Math.max(1.35, player.y + 1.35) : 1.35;
+  const followY = subject ? Math.max(1.35, subject.y + 1.35) : 1.35;
   // Focus and camera share one damping rate and a fixed offset, so the camera rides with the player instead of drifting on its own
   cameraRig.focus.x = THREE.MathUtils.damp(cameraRig.focus.x, focusX, 6, delta);
   cameraRig.focus.z = THREE.MathUtils.damp(cameraRig.focus.z, focusZ, 6, delta);

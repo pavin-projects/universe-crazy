@@ -31,11 +31,11 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .cutscene-bar { height: 48px; background: #05060ef2; border-color: #8d78f544; }
 .cutscene-bar.top { border-bottom: 1px solid #8d78f544; }
 .cutscene-bar.bottom { border-top: 1px solid #8d78f544; }
-.cutscene-card { align-self: center; margin-top: auto; margin-bottom: 12px; display: grid; justify-items: center; gap: 6px; width: min(620px, calc(100% - 32px)); padding: 14px 20px; border: 1px solid #9c83ff88; border-radius: 18px; background: #101329e8; box-shadow: 0 16px 60px #000c; text-align: center; pointer-events: auto; }
-.cutscene-card h2 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(1.25rem, 3.6vw, 1.8rem); letter-spacing: -.04em; color: #fff4d6; }
-.cutscene-card > p:not(.eyebrow) { margin: 0; color: #cbc8e6; font-size: .82rem; }
-.cutscene-bubbles { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 2px; }
-.cutscene-bubble-pill { position: relative; padding: 5px 11px; border: 2px solid #ffd166; border-radius: 99px; background: #fffdf5; color: #17152b; font-size: .72rem; font-weight: 800; box-shadow: 0 3px 10px #0006; }
+.cutscene-card { align-self: center; margin-top: auto; margin-bottom: 12px; display: grid; justify-items: center; gap: 8px; width: min(820px, calc(100% - 32px)); padding: 18px 24px; border: 1px solid #9c83ff88; border-radius: 22px; background: #101329e8; box-shadow: 0 16px 60px #000c; text-align: center; pointer-events: auto; }
+.cutscene-card h2 { margin: 0; font-family: "Space Grotesk", sans-serif; font-size: clamp(1.5rem, 4vw, 2.2rem); letter-spacing: -.04em; color: #fff4d6; }
+.cutscene-card > p:not(.eyebrow) { margin: 0; color: #e4e1fa; font-size: clamp(.95rem, 2vw, 1.1rem); line-height: 1.4; }
+.cutscene-bubbles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); justify-content: center; gap: 10px; width: 100%; margin-top: 4px; }
+.cutscene-bubble-pill { display: block; padding: 12px 18px; border: 3px solid #ffd166; border-radius: 22px; background: #fffdf5; color: #17152b; font-size: clamp(1rem, 2vw, 1.15rem); font-weight: 700; line-height: 1.35; text-align: left; box-shadow: 0 4px 14px #0006; }
 .cutscene-skip { min-height: 30px !important; padding: 0 12px !important; font-size: .7rem !important; margin-top: 2px; }
 .ko-flash span { font-family: "Space Grotesk", sans-serif; font-size: clamp(4rem, 12vw, 8rem); font-weight: 700; line-height: .9; letter-spacing: -.08em; text-shadow: 0 0 18px #ff739e, 0 0 44px #ff5b83; }
 .ko-flash small { color: #ffe2ae; font-size: .75rem; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
