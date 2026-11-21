@@ -15,8 +15,6 @@ const cutsceneTitle = document.querySelector("#cutscene-title");
 const cutsceneSubtitle = document.querySelector("#cutscene-subtitle");
 const cutsceneBubbles = document.querySelector("#cutscene-bubbles");
 let cutsceneTimer = 0;
-let cutsceneFocusFighter = null;
-let cutsceneZoomTimer = 0;
 
 function playCutscene(eyebrow, title, subtitle, duration = 2.4, bubbles = []) {
   cutsceneEyebrow.textContent = eyebrow;
@@ -36,8 +34,6 @@ function playCutscene(eyebrow, title, subtitle, duration = 2.4, bubbles = []) {
 
 function endCutscene() {
   cutsceneTimer = 0;
-  cutsceneFocusFighter = null;
-  cutsceneZoomTimer = 0;
   cutsceneOverlay.hidden = true;
 }
 
@@ -2598,6 +2594,25 @@ function createSecretPowerUp() {
   secretPowerUp = powerUp;
 }
 
+function spawnRosterReinforcements() {
+  const rosterPool = [
+    ...regularCharacterIds.filter((kind) => kind !== selectedFighter && kind !== "entity" && isFighterUnlocked(kind)),
+    ...starterCharacterIds.filter((kind) => kind !== selectedFighter && kind !== "entity")
+  ];
+  const roster = [...new Set(rosterPool)].slice(0, 4);
+  for (const kind of roster) {
+    const reinforcement = makeFighter(kind, fighters.length);
+    reinforcement.stocks = 2;
+    fighters.push(reinforcement);
+  }
+  hudDirty = true;
+  updateHud();
+}
+
+function cpuLevelFor(fighter) {
+  return fighter.kind === "entity" ? difficultyLevels.nightmare : difficultyLevels[cpuDifficulty];
+}
+
 function makeFighter(kind, index) {
   const visual = createFighterVisual(kind);
   if (kind === "dinosaur") visual.scale.setScalar(1.12);
@@ -3288,8 +3303,6 @@ function useSpecialAbility(fighter) {
   document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
   createSpeechBubble(fighter, `${character.specialName}!`);
   fighter.poseTimer = 0.72;
-  cutsceneFocusFighter = fighter;
-  cutsceneZoomTimer = 0.68;
   const boost = fighter.powerBoost > 0 ? 1.7 : 1;
   const handler = uniqueSpecialMechanics[fighter.kind];
   if (!handler) throw new Error(`Unknown special ability for ${character.name}.`);
@@ -3401,7 +3414,7 @@ function showKnockoutFlash(fighter) {
 function hitTarget(attacker, target, damage, force) {
   if (target.eliminated || target.respawn > 0 || target.invulnerable > 0) return;
   if (battleMode === "cpu" && target === fighters[0] && fighters.indexOf(attacker) > 0) {
-    damage *= difficultyLevels[cpuDifficulty].damage;
+    damage *= cpuLevelFor(attacker).damage;
   }
   target.damage += damage;
   target.hp = Math.max(0, target.hp - damage);
@@ -3579,7 +3592,7 @@ function readInput(fighter, index, delta) {
     special = tapped(playerControls.special, ...(arrowAliases ? ["ShiftRight"] : []));
     crouchHeld = pressed(playerControls.crouch);
   } else {
-    const level = difficultyLevels[cpuDifficulty];
+    const level = cpuLevelFor(fighter);
     const target = nearestOpponent(fighter);
     if (!target) return;
     const dx = target.x - fighter.x;
@@ -3630,7 +3643,7 @@ function readInput(fighter, index, delta) {
     horizontal = 0;
     depth = 0;
   }
-  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1) * 1.5 * (isCpu ? difficultyLevels[cpuDifficulty].speed : 1);
+  const speed = characters[fighter.kind].speed * (battleMode === "local" ? 0.5 : 1) * 1.5 * (isCpu ? cpuLevelFor(fighter).speed : 1);
   fighter.vx = (fighter.vx + horizontal * speed * delta * 8) * Math.exp(-(horizontal ? 3.2 : 7) * delta);
   fighter.vz = (fighter.vz + depth * speed * delta * 6) * Math.exp(-(depth ? 3.8 : 7) * delta);
   fighter.vx = THREE.MathUtils.clamp(fighter.vx, -speed, speed);
@@ -3732,8 +3745,9 @@ function updateFighter(fighter, index, delta, elapsed) {
     secretPowerUp.visible = false;
     secretPowerUp = null;
     fighter.powerBoost = 8;
-    document.querySelector("#battle-status").textContent = "SECRET POWER-UP! Your next attacks hit harder!";
-    document.querySelector("#screen-reader-status").textContent = "Secret power-up collected. Your attacks are stronger for eight seconds.";
+    spawnRosterReinforcements();
+    document.querySelector("#battle-status").textContent = "SECRET CRYSTAL! Your roster fighters join the arena!";
+    document.querySelector("#screen-reader-status").textContent = "Secret crystal collected. Roster fighters have entered the arena.";
   }
 
   const fighterBodyRadius = 0.42 * FIGHTER_SCALE;
@@ -4072,9 +4086,7 @@ function updateCamera(delta) {
   const arenaCameraDistance = Math.max(22, floorRadius * 0.45);
   if (portalIntroActive) {
     // Zoom in on the fighter currently dropping from the sky or posing on the court
-    const activeActor = fighters.find((fighter) => fighter.portalDelay === 0 && fighter.portalEntry > 0)
-      || fighters.slice().reverse().find((fighter) => fighter.portalEntry === 0)
-      || fighters[0];
+    const activeActor = fighters[0];
     if (activeActor) {
       const targetCamX = THREE.MathUtils.clamp(activeActor.x * 0.75, -5.5, 5.5);
       const targetCamY = Math.max(3.6, activeActor.y + 2.8);
@@ -4086,15 +4098,6 @@ function updateCamera(delta) {
       return;
     }
   }
-  if (cutsceneZoomTimer > 0 && cutsceneFocusFighter && !cutsceneFocusFighter.eliminated) {
-    cutsceneZoomTimer = Math.max(0, cutsceneZoomTimer - delta);
-    const focus = cutsceneFocusFighter;
-    camera.position.x = THREE.MathUtils.damp(camera.position.x, focus.x * 0.7, 4.5, delta);
-    camera.position.y = THREE.MathUtils.damp(camera.position.y, focus.y + 4.4, 4.5, delta);
-    camera.position.z = THREE.MathUtils.damp(camera.position.z, focus.z + 10.2, 4.5, delta);
-    camera.lookAt(focus.x, focus.y + 1.35, focus.z);
-    return;
-  }
   const activeFighters = fighters.filter((fighter) => !fighter.eliminated);
   const centerX = activeFighters.length
     ? activeFighters.reduce((total, fighter) => total + fighter.x, 0) / activeFighters.length
@@ -4104,16 +4107,18 @@ function updateCamera(delta) {
   const playerAlive = player && !player.eliminated;
   const followX = playerAlive ? player.x : centerX;
   const followZ = playerAlive ? player.z : 0;
-  const limit = floorRadius * 0.6;
-  const focusX = THREE.MathUtils.clamp(followX, -limit, limit);
-  const focusZ = THREE.MathUtils.clamp(followZ, -limit, limit);
-  const desiredZ = arenaCameraDistance + focusZ;
-  // Heavier smoothing on the follow point filters out per-frame fighter jostle
-  cameraRig.focus.x = THREE.MathUtils.damp(cameraRig.focus.x, focusX, 1.8, delta);
-  cameraRig.focus.z = THREE.MathUtils.damp(cameraRig.focus.z, focusZ, 1.8, delta);
-  cameraRig.position.x = THREE.MathUtils.damp(cameraRig.position.x, focusX * 0.8, 1.8, delta);
-  cameraRig.position.y = THREE.MathUtils.damp(cameraRig.position.y, 7.6, 2, delta);
-  cameraRig.position.z = THREE.MathUtils.damp(cameraRig.position.z, desiredZ, 1.8, delta);
+  // No clamp: the player must stay in view even when walking or falling past the rim
+  const focusX = followX;
+  const focusZ = followZ;
+  const followY = playerAlive ? Math.max(1.35, player.y + 1.35) : 1.35;
+  // Focus and camera share one damping rate and a fixed offset, so the camera rides with the player instead of drifting on its own
+  cameraRig.focus.x = THREE.MathUtils.damp(cameraRig.focus.x, focusX, 6, delta);
+  cameraRig.focus.z = THREE.MathUtils.damp(cameraRig.focus.z, focusZ, 6, delta);
+  // Rise and drop with the player so a fall off the edge stays on screen
+  cameraRig.focus.y = THREE.MathUtils.damp(cameraRig.focus.y, followY, 4, delta);
+  cameraRig.position.x = cameraRig.focus.x;
+  cameraRig.position.y = Math.max(7.6, cameraRig.focus.y + 6.2);
+  cameraRig.position.z = cameraRig.focus.z + arenaCameraDistance;
   // Shake is a slow, small offset applied after smoothing so hits nudge the view without vibrating it
   const shakeAmount = Math.min(cameraShake, 0.3) * 0.3;
   const shakeTime = performance.now() * 0.001;
@@ -4122,7 +4127,7 @@ function updateCamera(delta) {
   placeCameraWithOrbit(
     cameraRig.focus.x,
     cameraRig.focus.z,
-    1.35,
+    cameraRig.focus.y,
     cameraRig.position.x + shakeX,
     cameraRig.position.y + shakeY,
     cameraRig.position.z
