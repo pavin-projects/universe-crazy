@@ -2943,7 +2943,7 @@ function finishMatch(winnerIndex, reason) {
     const dropped = rollRareUnlock(bonusMultiplier);
     if (dropped) {
       unlockMessage = ` RARE UNLOCK! ${characters[dropped].name} (${characters[dropped].rarity}) joined your roster!`;
-      playCutscene("RARE UNLOCK!", `${characters[dropped].name.toUpperCase()} UNLOCKED!`, `${characters[dropped].rarity} Fighter · Special: ${characters[dropped].specialName}`, 2.5);
+      playCutscene("RARE UNLOCK!", `${characters[dropped].name.toUpperCase()} UNLOCKED!`, `${characters[dropped].rarity} Fighter`, 2.5);
     }
   }
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";
@@ -3308,11 +3308,9 @@ const uniqueSpecialMechanics = {
 
 function useSpecialAbility(fighter) {
   const character = characters[fighter.kind];
-  document.querySelector("#battle-status").textContent = `${character.name} used ${character.specialName}!`;
   createSpeechBubble(fighter, `${character.specialName}!`);
   fighter.poseTimer = 0.72;
   specialCameraFocus = { fighter, timer: specialCameraDuration };
-  playCutscene("SPECIAL ABILITY", character.specialName.toUpperCase(), `${character.name}: ${character.specialDescription}`, specialCameraDuration);
   const boost = fighter.powerBoost > 0 ? 1.7 : 1;
   const handler = uniqueSpecialMechanics[fighter.kind];
   if (!handler) throw new Error(`Unknown special ability for ${character.name}.`);
@@ -3541,7 +3539,6 @@ function respawn(fighter, index) {
       document.querySelector("#battle-status").textContent = `${characters[fighter.kind].name} is out!`;
       const nextRival = fighters.find((item, fighterIndex) => fighterIndex > 0 && !item.eliminated);
       if (nextRival) setMusicScene("battle", nextRival.kind);
-      playCutscene("ELIMINATED", `${characters[fighter.kind].name.toUpperCase()} IS OUT!`, `${remaining.length} fighters still standing`, 2);
     }
     updateHud();
     return;
