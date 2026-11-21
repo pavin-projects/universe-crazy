@@ -1900,7 +1900,6 @@ function createArena(index = arenaIndex) {
   arenaPlanets.length = 0;
   hitEffects.length = 0;
   cameraShake = 0;
-  arenaSurfaces.length = 0;
   arena.visible = !titleScreenActive;
 
   const theme = hiddenRealmActive ? secretTheme : arenaThemes[Math.floor(index / 20) % arenaThemes.length];
@@ -2571,9 +2570,14 @@ function updateFighterPreview(kind) {
     arena.remove(fighterPreview);
   }
   fighterPreview = createFighterVisual(kind);
+  const stand = new THREE.Group();
+  addMesh(stand, new THREE.CylinderGeometry(0.85, 0.95, 0.12, 48), material("#1d2146", 0.35, 0.55), [0, 0.02, 0]);
+  addMesh(stand, new THREE.TorusGeometry(0.86, 0.035, 8, 64), new THREE.MeshBasicMaterial({ color: "#8df8ff" }), [0, 0.09, 0]).rotation.x = Math.PI / 2;
+  fighterPreview.add(stand);
   const compact = window.innerWidth <= 900;
   fighterPreview.scale.multiplyScalar(kind === "entity" ? 1.2 : compact ? 1.48 : 1.55);
-  fighterPreview.position.set(compact ? 0 : 8.3, 0.08, 0.3);
+  // Stand the selected fighter in the middle of the arena floor, which sits at about y=0.035
+  fighterPreview.position.set(0, 0.04, 0);
   fighterPreview.userData.baseY = fighterPreview.position.y;
   fighterPreview.userData.preview = true;
   arena.add(fighterPreview);
@@ -2620,7 +2624,8 @@ function makeFighter(kind, index) {
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
     attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
-    cpuThinkTime: Math.random() * 0.25, speechBubble: null, speechTimer: 0
+    cpuThinkTime: Math.random() * 0.25, cpuStuckTime: 0, cpuDodgeTime: 0, cpuDodgeDir: 1, cpuLastX: x, cpuLastZ: z,
+    speechBubble: null, speechTimer: 0
   };
 }
 
@@ -2782,6 +2787,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   displayedSecond = -1;
   matchActive = true;
   matchEnded = false;
+  arena.visible = true;
   hudDirty = true;
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = true;
@@ -3578,19 +3584,44 @@ function readInput(fighter, index, delta) {
     if (!target) return;
     const dx = target.x - fighter.x;
     const dz = target.z - fighter.z;
+    const distance = Math.hypot(dx, dz);
     const nearRim = Math.hypot(fighter.x, fighter.z) > floorRadius * level.edgeCaution;
+    // Always turn toward the target so attacks land where the fighter is actually facing
+    if (Math.abs(dx) > 0.3) fighter.facing = Math.sign(dx);
     horizontal = Math.abs(dx) > 1.7 ? Math.sign(dx) : 0;
     depth = Math.abs(dz) > 1.1 ? Math.sign(dz) : 0;
     if (nearRim) {
       horizontal = -Math.sign(fighter.x) * (Math.abs(fighter.x) > 0.5 ? 1 : 0);
       depth = -Math.sign(fighter.z) * (Math.abs(fighter.z) > 0.5 ? 1 : 0);
     }
+    // If the fighter is pushing against a pillar or wall without making progress, sidestep around it and hop
+    const moved = Math.hypot(fighter.x - fighter.cpuLastX, fighter.z - fighter.cpuLastZ);
+    fighter.cpuLastX = fighter.x;
+    fighter.cpuLastZ = fighter.z;
+    if ((horizontal || depth) && moved < 0.2 * delta * characters[fighter.kind].speed * 1.5 * level.speed) {
+      fighter.cpuStuckTime += delta;
+    } else {
+      fighter.cpuStuckTime = Math.max(0, fighter.cpuStuckTime - delta * 2);
+    }
+    if (fighter.cpuStuckTime > 0.35 && fighter.cpuDodgeTime <= 0) {
+      fighter.cpuDodgeTime = 0.7;
+      fighter.cpuDodgeDir = Math.random() < 0.5 ? -1 : 1;
+      fighter.cpuStuckTime = 0;
+      if (fighter.grounded) fighter.vy = 9.2;
+      fighter.grounded = false;
+    }
+    if (fighter.cpuDodgeTime > 0 && !nearRim) {
+      fighter.cpuDodgeTime -= delta;
+      const side = fighter.cpuDodgeDir;
+      horizontal = Math.abs(dz) > 0.001 ? -Math.sign(dz) * side : 0;
+      depth = Math.abs(dx) > 0.001 ? Math.sign(dx) * side : 0;
+    }
     fighter.cpuThinkTime -= delta;
     if (fighter.cpuThinkTime <= 0) {
       fighter.cpuThinkTime = level.thinkMin + Math.random() * level.thinkRange;
-      const distance = Math.hypot(dx, dz);
-      strike = !nearRim && distance < level.strikeRange;
-      special = !nearRim && distance < 4 && Math.random() < level.specialChance;
+      const facingTarget = Math.abs(dx) < 0.6 || Math.sign(dx) === fighter.facing;
+      strike = !nearRim && distance < level.strikeRange && facingTarget && Math.abs(dz) < 1.6;
+      special = !nearRim && distance < 4 && facingTarget && Math.random() < level.specialChance;
       jump = fighter.grounded && !nearRim && Math.random() < level.jumpChance;
     }
   }
@@ -3994,7 +4025,50 @@ function updateClock(delta) {
   }
 }
 
+const cameraRig = {
+  focus: new THREE.Vector3(0, 1.35, 0),
+  position: new THREE.Vector3(0, 7.6, 25.5)
+};
+// Alt + arrow keys orbit and zoom the camera; Alt + 0 resets it
+const cameraOrbit = { yaw: 0, zoom: 1 };
+// Pointer position in -1..1 screen space, used to drift the menu camera
+const menuPointer = { x: 0, y: 0 };
+window.addEventListener("pointermove", (event) => {
+  menuPointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  menuPointer.y = (event.clientY / window.innerHeight) * 2 - 1;
+});
+
+function updateCameraOrbit(delta) {
+  const altHeld = keys.has("AltLeft") || keys.has("AltRight");
+  if (!altHeld) return;
+  // Arrow keys double as Player 2 controls, so hide them from gameplay while orbiting
+  for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) keys.delete(code);
+  if (keys.has("ArrowLeft")) cameraOrbit.yaw -= delta * 1.6;
+  if (keys.has("ArrowRight")) cameraOrbit.yaw += delta * 1.6;
+  if (keys.has("ArrowUp")) cameraOrbit.zoom = Math.max(0.6, cameraOrbit.zoom - delta * 0.8);
+  if (keys.has("ArrowDown")) cameraOrbit.zoom = Math.min(1.8, cameraOrbit.zoom + delta * 0.8);
+  if (keys.has("Digit0")) {
+    cameraOrbit.yaw = 0;
+    cameraOrbit.zoom = 1;
+    keys.delete("Digit0");
+  }
+}
+
+function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ) {
+  const dx = baseX - focusX;
+  const dz = baseZ - focusZ;
+  const cos = Math.cos(cameraOrbit.yaw);
+  const sin = Math.sin(cameraOrbit.yaw);
+  camera.position.set(
+    focusX + (dx * cos - dz * sin) * cameraOrbit.zoom,
+    baseY,
+    focusZ + (dx * sin + dz * cos) * cameraOrbit.zoom
+  );
+  camera.lookAt(focusX, lookY, focusZ);
+}
+
 function updateCamera(delta) {
+  camera.clearViewOffset();
   const arenaCameraDistance = Math.max(22, floorRadius * 0.45);
   if (portalIntroActive) {
     // Zoom in on the fighter currently dropping from the sky or posing on the court
@@ -4025,22 +4099,34 @@ function updateCamera(delta) {
   const centerX = activeFighters.length
     ? activeFighters.reduce((total, fighter) => total + fighter.x, 0) / activeFighters.length
     : 0;
-  const spreadX = activeFighters.length > 1
-    ? Math.max(...activeFighters.map((fighter) => fighter.x)) - Math.min(...activeFighters.map((fighter) => fighter.x))
-    : 0;
-  const spreadZ = activeFighters.length > 1
-    ? Math.max(...activeFighters.map((fighter) => fighter.z)) - Math.min(...activeFighters.map((fighter) => fighter.z))
-    : 0;
+  // The camera always follows the human player; only fall back to the group when the player is out
   const player = fighters[0];
   const playerAlive = player && !player.eliminated;
   const followX = playerAlive ? player.x : centerX;
   const followZ = playerAlive ? player.z : 0;
-  const targetX = THREE.MathUtils.clamp(followX * 0.8, -floorRadius, floorRadius);
-  const targetZ = THREE.MathUtils.clamp(followZ * 0.8, -floorRadius, floorRadius);
-  camera.position.x = THREE.MathUtils.damp(camera.position.x, targetX, 2.4, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.y = THREE.MathUtils.damp(camera.position.y, 7.6, 2, delta) + (Math.random() - 0.5) * cameraShake;
-  camera.position.z = THREE.MathUtils.damp(camera.position.z, arenaCameraDistance + targetZ + Math.min(Math.max(spreadX, spreadZ), 12) * 0.55, 2, delta);
-  camera.lookAt(followX, 1.35, followZ);
+  const limit = floorRadius * 0.6;
+  const focusX = THREE.MathUtils.clamp(followX, -limit, limit);
+  const focusZ = THREE.MathUtils.clamp(followZ, -limit, limit);
+  const desiredZ = arenaCameraDistance + focusZ;
+  // Heavier smoothing on the follow point filters out per-frame fighter jostle
+  cameraRig.focus.x = THREE.MathUtils.damp(cameraRig.focus.x, focusX, 1.8, delta);
+  cameraRig.focus.z = THREE.MathUtils.damp(cameraRig.focus.z, focusZ, 1.8, delta);
+  cameraRig.position.x = THREE.MathUtils.damp(cameraRig.position.x, focusX * 0.8, 1.8, delta);
+  cameraRig.position.y = THREE.MathUtils.damp(cameraRig.position.y, 7.6, 2, delta);
+  cameraRig.position.z = THREE.MathUtils.damp(cameraRig.position.z, desiredZ, 1.8, delta);
+  // Shake is a slow, small offset applied after smoothing so hits nudge the view without vibrating it
+  const shakeAmount = Math.min(cameraShake, 0.3) * 0.3;
+  const shakeTime = performance.now() * 0.001;
+  const shakeX = Math.sin(shakeTime * 6.3) * shakeAmount;
+  const shakeY = Math.cos(shakeTime * 4.1) * shakeAmount * 0.7;
+  placeCameraWithOrbit(
+    cameraRig.focus.x,
+    cameraRig.focus.z,
+    1.35,
+    cameraRig.position.x + shakeX,
+    cameraRig.position.y + shakeY,
+    cameraRig.position.z
+  );
 }
 
 function animatePortal(elapsed, delta) {
@@ -4049,7 +4135,9 @@ function animatePortal(elapsed, delta) {
   galaxyBackdrop.rotation.x = -0.18 + Math.sin(elapsed * 0.16) * 0.025;
   galaxyBackdrop.children[0].material.opacity = 0.62 + Math.sin(elapsed * 1.1) * 0.12;
   animateSpaceBattle(elapsed);
-  titlePlanets.visible = titleScreenActive || selectionScreenActive;
+  const onMenuScreen = titleScreenActive || selectionScreenActive;
+  spaceBattle.visible = onMenuScreen;
+  titlePlanets.visible = onMenuScreen;
   if (titlePlanets.visible) {
     titlePlanets.children.forEach((planet) => {
       const { basePosition, phase } = planet.userData;
@@ -4112,6 +4200,7 @@ function frame(timestamp = 0) {
   const delta = Math.min(clock.getDelta(), 1 / 30);
   const elapsed = clock.elapsedTime;
   animatePortal(elapsed, delta);
+  updateCameraOrbit(delta);
   if (matchActive) {
     if (!portalIntroActive) updateClock(delta);
     for (let index = 0; index < fighters.length; index += 1) {
@@ -4128,8 +4217,20 @@ function frame(timestamp = 0) {
     updateCamera(delta);
     if (hudDirty) updateHud();
   } else if (fighters.length === 0) {
-    camera.position.x = THREE.MathUtils.damp(camera.position.x, 0, 0.6, delta);
-    camera.lookAt(0, selectionScreenActive && window.innerWidth <= 900 ? -2.2 : 1.4, 0);
+    // On the select screen the camera drifts toward the cursor but always aims at the fighter
+    const menuX = selectionScreenActive ? menuPointer.x * 2.5 : 0;
+    const menuY = selectionScreenActive ? 10.8 - menuPointer.y * 1.2 : 10.8;
+    cameraRig.position.x = THREE.MathUtils.damp(cameraRig.position.x, menuX, 2.5, delta);
+    cameraRig.position.y = THREE.MathUtils.damp(cameraRig.position.y, menuY, 2.5, delta);
+    cameraRig.position.z = THREE.MathUtils.damp(cameraRig.position.z, 25.5, 0.6, delta);
+    placeCameraWithOrbit(0, 0, selectionScreenActive && window.innerWidth <= 900 ? -2.2 : 1.4, cameraRig.position.x, cameraRig.position.y, cameraRig.position.z);
+    // On desktop the fighter select panel covers the left side, so shift the projection to keep the fighter in the open area on the right
+    if (selectionScreenActive && window.innerWidth > 900) {
+      camera.setViewOffset(window.innerWidth, window.innerHeight, -window.innerWidth * 0.33, 0, window.innerWidth, window.innerHeight);
+    } else {
+      camera.clearViewOffset();
+    }
+    camera.updateProjectionMatrix();
     if (fighterPreview) {
       fighterPreview.position.y = fighterPreview.userData.baseY + Math.sin(elapsed * 2.4) * 0.08;
       fighterPreview.rotation.y += delta * 0.72;
@@ -4463,8 +4564,10 @@ window.addEventListener("keydown", (event) => {
     "KeyA", "KeyD", "KeyW", "KeyS", "Space", "KeyJ", "KeyK",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "ShiftRight",
     "KeyF", "KeyH", "KeyT", "KeyG", "KeyR", "KeyY", "KeyU", "KeyC", "KeyB", "ControlRight",
-    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6", "Numpad8"
+    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6", "Numpad8",
+    "AltLeft", "AltRight", "Digit0"
   ];
+  if (event.altKey && event.code.startsWith("Arrow")) event.preventDefault();
   if (!supported.includes(event.code)) return;
   if (matchActive) event.preventDefault();
   if (!keys.has(event.code)) justPressed.add(event.code);
