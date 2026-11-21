@@ -1604,17 +1604,18 @@ function createStars() {
 
 function createUniverseBackdrop() {
   const canvas = document.createElement("canvas");
-  canvas.width = 1600;
-  canvas.height = 900;
+  canvas.width = 2048;
+  canvas.height = 1024;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Could not create the Universe Crazy background.");
 
   context.fillStyle = "#050817";
   context.fillRect(0, 0, canvas.width, canvas.height);
   for (const nebula of [
-    { x: 360, y: 440, radius: 470, color: "rgba(91, 48, 169, 0.45)" },
-    { x: 1100, y: 310, radius: 390, color: "rgba(20, 118, 166, 0.35)" },
-    { x: 900, y: 760, radius: 430, color: "rgba(122, 47, 105, 0.28)" }
+    { x: 460, y: 560, radius: 600, color: "rgba(91, 48, 169, 0.45)" },
+    { x: 1400, y: 400, radius: 500, color: "rgba(20, 118, 166, 0.35)" },
+    { x: 1150, y: 980, radius: 550, color: "rgba(122, 47, 105, 0.28)" },
+    { x: 1800, y: 700, radius: 480, color: "rgba(91, 48, 169, 0.3)" }
   ]) {
     const glow = context.createRadialGradient(nebula.x, nebula.y, 0, nebula.x, nebula.y, nebula.radius);
     glow.addColorStop(0, nebula.color);
@@ -1622,10 +1623,10 @@ function createUniverseBackdrop() {
     context.fillStyle = glow;
     context.fillRect(0, 0, canvas.width, canvas.height);
   }
-  for (let i = 0; i < 1100; i += 1) {
+  for (let i = 0; i < 2600; i += 1) {
     const x = Math.random() * canvas.width;
     const y = Math.random() * canvas.height;
-    const radius = Math.random() * 1.7 + 0.25;
+    const radius = Math.random() * 2.1 + 0.25;
     context.fillStyle = `rgba(222, 233, 255, ${0.22 + Math.random() * 0.7})`;
     context.beginPath();
     context.arc(x, y, radius, 0, Math.PI * 2);
@@ -1633,12 +1634,12 @@ function createUniverseBackdrop() {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  const wall = new THREE.Mesh(
-    new THREE.PlaneGeometry(160, 140),
-    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, fog: false })
+  const sky = new THREE.Mesh(
+    new THREE.SphereGeometry(420, 64, 40),
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.BackSide, fog: false, depthWrite: false })
   );
-  wall.position.set(0, -18, -52);
-  scene.add(wall);
+  sky.renderOrder = -1;
+  scene.add(sky);
 
   titlePlanets = new THREE.Group();
   for (const config of [
