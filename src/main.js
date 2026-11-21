@@ -9,35 +9,6 @@ const graphicsError = document.querySelector("#graphics-error");
 const graphicsErrorMessage = document.querySelector("#graphics-error-message");
 const knockoutFlash = document.querySelector("#knockout-flash");
 const knockoutName = document.querySelector("#knockout-name");
-const cutsceneOverlay = document.querySelector("#cutscene-overlay");
-const cutsceneEyebrow = document.querySelector("#cutscene-eyebrow");
-const cutsceneTitle = document.querySelector("#cutscene-title");
-const cutsceneSubtitle = document.querySelector("#cutscene-subtitle");
-const cutsceneBubbles = document.querySelector("#cutscene-bubbles");
-let cutsceneTimer = 0;
-
-function playCutscene(eyebrow, title, subtitle, duration = 2.4, bubbles = []) {
-  cutsceneEyebrow.textContent = eyebrow;
-  cutsceneTitle.textContent = title;
-  cutsceneSubtitle.textContent = subtitle;
-  cutsceneBubbles.replaceChildren();
-  bubbles.forEach(({ name, line, color }) => {
-    const pill = document.createElement("span");
-    pill.className = "cutscene-bubble-pill";
-    if (color) pill.style.borderColor = color;
-    pill.textContent = `${name}: "${line}"`;
-    cutsceneBubbles.append(pill);
-  });
-  cutsceneOverlay.hidden = false;
-  cutsceneTimer = duration;
-}
-
-function endCutscene() {
-  cutsceneTimer = 0;
-  cutsceneOverlay.hidden = true;
-}
-
-document.querySelector("#cutscene-skip").addEventListener("click", endCutscene);
 const storageNotice = document.querySelector("#storage-notice");
 const fullscreenButton = document.querySelector("#toggle-fullscreen");
 const fullscreenNotice = document.querySelector("#fullscreen-notice");
@@ -2784,10 +2755,8 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     monkey: "Ooh ooh aah!",
     lizard: "Stay cool!"
   };
-  const entryBubbles = fighters.map((fighter) => {
-    const line = openingLines[fighter.kind] || characters[fighter.kind].openingLine || "Let's fight!";
-    createSpeechBubble(fighter, line);
-    return { name: characters[fighter.kind].name, line, color: characters[fighter.kind].palette.trim };
+  fighters.forEach((fighter) => {
+    createSpeechBubble(fighter, openingLines[fighter.kind] || characters[fighter.kind].openingLine || "Let's fight!");
   });
   const portalEntryDuration = 1.45;
   fighters.forEach((fighter, index) => {
@@ -2831,15 +2800,6 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   updateHud();
   document.querySelector("#screen-reader-status").textContent =
     `The portal opens. ${fighters.map((fighter) => `${characters[fighter.kind].name} enters the arena`).join(". ")}.`;
-  const rivalNames = fighters.slice(1).map((fighter) => characters[fighter.kind].name).join(" • ");
-  const arenaTitle = hiddenRealmActive ? secretTheme.name : arenaThemes[Math.floor(arenaIndex / 20) % arenaThemes.length].name;
-  playCutscene(
-    secretChallengeActive ? "SECRET BOSS CUTSCENE" : "COURT ENTRY CUTSCENE",
-    secretChallengeActive ? "ENTITY.EXE AWAKENS" : `ENTERING ${arenaTitle.toUpperCase()}`,
-    secretChallengeActive ? "Defeat Entity.exe in The Null Abyss to unlock the secret skin!" : `${characters[fighters[0].kind].name} vs. ${rivalNames}`,
-    secretChallengeActive ? 3.2 : 3.2,
-    entryBubbles
-  );
   setMusicScene("battle", fighters[1]?.kind || null);
   renderer.domElement.focus();
 }
@@ -2887,7 +2847,6 @@ function showSelection() {
   document.querySelector("#portal-screen").hidden = true;
   document.querySelector("#select-screen").hidden = false;
   document.querySelector("#arena-strip").hidden = false;
-  endCutscene();
   clearFighters();
   updateFighterPreview(selectedFighter);
   setMusicScene("select");
@@ -2907,7 +2866,6 @@ function showPortal() {
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#portal-screen").hidden = false;
-  endCutscene();
   clearFighters();
   setMusicScene("title");
 }
@@ -2943,7 +2901,6 @@ function finishMatch(winnerIndex, reason) {
     const dropped = rollRareUnlock(bonusMultiplier);
     if (dropped) {
       unlockMessage = ` RARE UNLOCK! ${characters[dropped].name} (${characters[dropped].rarity}) joined your roster!`;
-      playCutscene("RARE UNLOCK!", `${characters[dropped].name.toUpperCase()} UNLOCKED!`, `${characters[dropped].rarity} Fighter`, 2.5);
     }
   }
   document.querySelector("#winner-title").textContent = winner ? `${characters[winner.kind].name.toUpperCase()} WINS` : "TIME!";
@@ -4092,19 +4049,26 @@ function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ) {
 function updateCamera(delta) {
   camera.clearViewOffset();
   const arenaCameraDistance = Math.max(22, floorRadius * 0.45);
-  if (portalIntroActive) {
-    // Zoom in on the fighter currently dropping from the sky or posing on the court
-    const activeActor = fighters[0];
-    if (activeActor) {
-      const targetCamX = THREE.MathUtils.clamp(activeActor.x * 0.75, -5.5, 5.5);
-      const targetCamY = Math.max(3.6, activeActor.y + 2.8);
-      const targetCamZ = activeActor.z + 7.8;
-      camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCamX, 3.2, delta);
-      camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCamY, 3.2, delta);
-      camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 2.8, delta);
-      camera.lookAt(activeActor.x, activeActor.y + 1.35, activeActor.z);
-      return;
-    }
+  if (portalIntroActive && fighters.length) {
+    // Frame the whole roster so every entering fighter is on screen, pulling back as they spread out
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, minY = Infinity, maxY = -Infinity;
+    fighters.forEach((item) => {
+      minX = Math.min(minX, item.x); maxX = Math.max(maxX, item.x);
+      minZ = Math.min(minZ, item.z); maxZ = Math.max(maxZ, item.z);
+      minY = Math.min(minY, item.y); maxY = Math.max(maxY, item.y);
+    });
+    const groupX = (minX + maxX) / 2;
+    const groupY = (minY + maxY) / 2;
+    const groupZ = (minZ + maxZ) / 2;
+    const spread = Math.max(maxX - minX, maxZ - minZ, 2);
+    const targetCamX = THREE.MathUtils.clamp(groupX, -9, 9);
+    const targetCamY = Math.max(7, groupY + 4 + spread * 0.45);
+    const targetCamZ = groupZ + 6 + spread * 0.9;
+    camera.position.x = THREE.MathUtils.damp(camera.position.x, targetCamX, 3.2, delta);
+    camera.position.y = THREE.MathUtils.damp(camera.position.y, targetCamY, 3.2, delta);
+    camera.position.z = THREE.MathUtils.damp(camera.position.z, targetCamZ, 2.8, delta);
+    camera.lookAt(groupX, groupY + 1.2, groupZ);
+    return;
   }
   const activeFighters = fighters.filter((fighter) => !fighter.eliminated);
   const centerX = activeFighters.length
@@ -4273,10 +4237,6 @@ function frame(timestamp = 0) {
       knockoutFlash.hidden = true;
       knockoutFlash.classList.remove("play");
     }
-  }
-  if (cutsceneTimer > 0) {
-    cutsceneTimer = Math.max(0, cutsceneTimer - delta);
-    if (cutsceneTimer === 0) cutsceneOverlay.hidden = true;
   }
   justPressed.clear();
   realmBackdrop.rotation.y += delta * 0.01;
