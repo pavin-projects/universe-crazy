@@ -405,7 +405,7 @@ let portalDisc;
 let portalRings = [];
 let fighterPreview = null;
 let secretPowerUp = null;
-let battleMode = "cpu";
+let battleMode = "explore";
 let selectedFighter = "bumble";
 const arenaCount = 200;
 let arenaIndex = Math.floor(Math.random() * arenaCount);
@@ -2623,6 +2623,7 @@ function makeFighter(kind, index) {
 }
 
 function clearFighters() {
+  clearExplore();
   portalIntroActive = false;
   knockoutFlashTimer = 0;
   knockoutFlash.hidden = true;
@@ -2696,9 +2697,13 @@ function updateControlsHint() {
   const localSpecials = localFighters.map((kind, index) => {
     return `P${index + 1} ${characters[kind].specialName} (${specialKeys[index]})`;
   }).join(" · ");
-  const controls = battleMode === "cpu"
-    ? `Solo vs. 5 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
-    : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Crouch: C / R-Ctrl / B / Num3 · Specials: ${localSpecials}`;
+  const controls = battleMode === "explore"
+    ? "Flight: A/D or ←/→ turn · Q/E strafe · W/↑ thrust · S/↓ reverse · R/F pitch · Space rise · C descend · Shift boost · J fire · Alt+A/D orbit camera · Alt+W/S zoom · find Entity.exe on the minimap"
+    : battleMode === "split"
+      ? "Split-screen 1v1: P1 WASD move · Space jump · J fight · K special | P2 Arrows move · Right Ctrl jump · Enter fight · Right Shift special"
+      : battleMode === "cpu"
+        ? `Solo vs. 5 CPUs: WASD move · Space jump · J fight · K: ${characters[selectedFighter].specialName}`
+        : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Crouch: C / R-Ctrl / B / Num3 · Specials: ${localSpecials}`;
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
 }
@@ -2725,6 +2730,11 @@ function changeArena(offset) {
 function startMatch(opponentOverride = null, randomizeArena = false) {
   selectionScreenActive = false;
   titlePlanets.visible = false;
+  if (battleMode === "explore") {
+    clearInputState();
+    startExplore();
+    return;
+  }
   if (randomizeArena && !hiddenRealmActive) {
     arenaIndex = Math.floor(Math.random() * arenaCount);
     createArena(arenaIndex);
@@ -2735,7 +2745,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   const opponentPool = regularCharacterIds.filter((kind) => kind !== selectedFighter && isFighterUnlocked(kind));
   const fallbackPool = starterCharacterIds.filter((kind) => kind !== selectedFighter);
   const activePool = opponentPool.length >= 5 ? opponentPool : [...opponentPool, ...fallbackPool];
-  const fighterCount = secretChallengeActive ? 2 : battleMode === "cpu" ? 6 : 4;
+  const fighterCount = secretChallengeActive || battleMode === "split" ? 2 : battleMode === "cpu" ? 6 : 4;
   fighters.push(makeFighter(selectedFighter, 0));
   for (let index = 1; index < fighterCount; index += 1) {
     const kind = index === 1 && opponentOverride
@@ -3134,6 +3144,61 @@ function spawnVoltChain(fighter, color, damage, force) {
   }
 }
 
+function spawnChargeDash(fighter, color, damage, force, speed) {
+  fighter.vx = fighter.facing * speed;
+  fighter.invulnerable = Math.max(fighter.invulnerable, 0.7);
+  spawnAbilityRing(fighter, color, 0.34);
+  const target = nearestOpponent(fighter);
+  if (target && Math.hypot(target.x - fighter.x, target.z - fighter.z) < 3.6) hitTarget(fighter, target, damage, force);
+}
+
+function spawnFlameRing(fighter, color, damage, force) {
+  [-1, -0.5, 0, 0.5, 1].forEach((s) => launchProjectile(fighter, { shape: "sphere", color, emissive: "#ff7a1a", radius: 0.22, speed: 7.5, life: 1.1, damage, force, vz: s * 5 }));
+  spawnAbilityRing(fighter, color, 0.4);
+}
+
+function spawnRepairPulse(fighter, color, healAmount) {
+  fighter.invulnerable = Math.max(fighter.invulnerable, 1.6);
+  fighter.hp = Math.min(100, fighter.hp + healAmount);
+  fighter.damage = Math.max(0, fighter.damage - healAmount);
+  hudDirty = true;
+  spawnAbilityRing(fighter, color, 0.5);
+  for (const target of fighters) {
+    if (target === fighter || target.eliminated || target.respawn > 0) continue;
+    if (Math.hypot(target.x - fighter.x, target.z - fighter.z) > 3.2) continue;
+    target.vx += (Math.sign(target.x - fighter.x) || 1) * 6;
+    target.vy = Math.max(target.vy, 3);
+    target.grounded = false;
+  }
+}
+
+function spawnWallWave(fighter, color, damage, force) {
+  [-1.2, -0.6, 0, 0.6, 1.2].forEach((offsetZ) => launchProjectile(fighter, { shape: "wave", color, emissive: color, radius: 0.5, speed: 6, life: 2.6, damage, force, offsetZ }));
+  spawnAbilityRing(fighter, color, 0.35);
+}
+
+function spawnPogoBounce(fighter, color, damage, force) {
+  fighter.vy = 13;
+  fighter.grounded = false;
+  fighter.invulnerable = Math.max(fighter.invulnerable, 0.8);
+  applyAreaAbility(fighter, { radius: 2.6, damage, force, color });
+}
+
+function spawnHookGrab(fighter, color, damage, force) {
+  spawnAbilityRing(fighter, color, 0.3);
+  const target = nearestOpponent(fighter);
+  if (!target || Math.hypot(target.x - fighter.x, target.z - fighter.z) > 6) return;
+  target.x = THREE.MathUtils.clamp(fighter.x + fighter.facing * 1.6, -floorRadius + 1, floorRadius - 1);
+  target.visual.position.set(target.x, target.y, target.z);
+  hitTarget(fighter, target, damage, force);
+}
+
+function spawnJellySplash(fighter, color, damage, force) {
+  fighter.vy = 6;
+  fighter.grounded = false;
+  applyAreaAbility(fighter, { radius: 4.5, damage, force, color });
+}
+
 const uniqueSpecialMechanics = {
   bumble: (f) => launchProjectile(f, { color: "#ffe36f", emissive: "#ff9d35", speed: 15, damage: 10, force: 4.8 }),
   robot: (f, b, p) => {
@@ -3181,7 +3246,7 @@ const uniqueSpecialMechanics = {
     applyAreaAbility(f, { radius: 3.6, damage: 11, force: 5.2, color: "#7ff7ff" });
   },
   mrstar: (f) => [-2, -1, 0, 1, 2].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffd646", emissive: "#ff9b3d", radius: 0.2, speed: 12, life: 1.4, damage: 5.5, force: 3.2, vz: s * 1.9 })),
-  stubby: (f, b, p) => spawnSkyUppercut(f, "#ff9642", 11 * p * b, 5.4, 9.5),
+  stubby: (f, b, p) => spawnPogoBounce(f, "#ff9642", 9 * p * b, 4.6),
   stickman: (f) => launchProjectile(f, { color: "#72e8ff", emissive: "#ffcf66", radius: 0.24, speed: 13.5, life: 1.9, damage: 10.5, force: 4.5, boomerang: true }),
   larry: (f, b, p) => {
     f.vx = f.facing * 13;
@@ -3193,7 +3258,7 @@ const uniqueSpecialMechanics = {
   bob: (f) => { f.vy = 7.5; applyAreaAbility(f, { radius: 4.2, damage: 15, force: 7.8, color: "#ffaa44" }); },
   michael: (f) => launchProjectile(f, { color: "#8ef0ff", emissive: "#ff5c8d", radius: 0.2, speed: 19, life: 1.1, damage: 12, force: 5.6 }),
   rand: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { color: "#ff4d6d", emissive: "#ffd166", radius: 0.26, speed: 10.5, vy: 2.2, vz: s * 3.1, life: 1.4, damage: 7.5, force: 4.2 })),
-  robert: (f, b, p) => spawnShieldBurst(f, "#d4e6ff", 10, 3.4, 12 * p * b, 6.4),
+  robert: (f, b, p) => spawnRepairPulse(f, "#d4e6ff", 18 * p * b),
   bopper: (f) => spawnMeteorDrop(f, "#ffe28a", 14, 7.0),
   pewstickman: (f) => [0, 0.18].forEach((oz, i) => launchProjectile(f, { color: "#4cf2ff", emissive: "#ff59b8", radius: 0.18, speed: 18 + i * 3, life: 1.2, damage: 7.5, force: 4.0, offsetZ: oz })),
   liz: (f, b, p) => spawnStarShower(f, "#ffe0f4", 11.5 * p * b, 5.8),
@@ -3227,7 +3292,7 @@ const uniqueSpecialMechanics = {
     if (t && Math.hypot(t.x - f.x, t.z - f.z) < 3.2) hitTarget(f, t, 12 * p * b, 5.6);
   },
   pixelpal: (f) => [0, 1].forEach((i) => launchProjectile(f, { color: i ? "#ff6ec7" : "#7cf7ff", emissive: "#7c5cff", radius: 0.24, speed: 13 + i * 2, life: 1.4, damage: 7, force: 3.8, offsetZ: (i - 0.5) * 0.4 })),
-  flameknight: (f) => { spawnFireBreath(f); spawnShieldBurst(f, "#ffd166", 6, 3.0, 9, 4.8); },
+  flameknight: (f, b, p) => spawnFlameRing(f, "#ffb347", 9 * p * b, 5.0),
   frostbite: (f) => {
     launchProjectile(f, { shape: "wave", color: "#e6fbff", emissive: "#38b6ff", radius: 0.58, speed: 8.2, life: 1.8, damage: 11, force: 5.2 });
     const t = nearestOpponent(f);
@@ -3248,12 +3313,12 @@ const uniqueSpecialMechanics = {
     spawnAbilityRing(f, "#ffd43b", 0.28);
     applyAreaAbility(f, { radius: 3.2, damage: 11.5, force: 5.8, color: "#4dabf7" });
   },
-  captainclaw: (f, b, p) => spawnSkyUppercut(f, "#ff8c42", 13.5 * p * b, 6.4, 9.0),
+  captainclaw: (f, b, p) => spawnHookGrab(f, "#ff8c42", 15 * p * b, 7.0),
   astroduck: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffd95e", emissive: "#ff8533", radius: 0.28, speed: 11.5, life: 1.7, damage: 8.5, force: 4.5, vz: s * 2.2, boomerang: true })),
   cyberninja: (f) => launchProjectile(f, { shape: "star", color: "#38f2af", emissive: "#ff477e", radius: 0.26, speed: 17, life: 1.3, damage: 13, force: 5.8 }),
   slimeking: (f) => { f.vy = 9.5; applyAreaAbility(f, { radius: 4.4, damage: 13.5, force: 7.2, color: "#4cd964" }); },
   rocketpup: (f) => launchProjectile(f, { color: "#ff595e", emissive: "#fff0d6", radius: 0.3, speed: 12, life: 2.2, damage: 12, force: 5.8, homing: true }),
-  magmaorb: (f) => { spawnFireBreath(f); applyAreaAbility(f, { radius: 3.4, damage: 10, force: 5.0, color: "#ff5722" }); },
+  magmaorb: (f) => spawnMeteorDrop(f, "#ff5722", 12, 6.4),
   clockwork: (f) => launchProjectile(f, { shape: "wave", color: "#fff0bd", emissive: "#d49b4b", radius: 0.35, speed: 12.5, life: 2.0, damage: 11.5, force: 5.2, boomerang: true }),
   cosmicowl: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffe28a", emissive: "#7c65b8", radius: 0.24, speed: 10.5, life: 2.0, damage: 7.5, force: 4.0, vz: s * 2.1, homing: s === 0 })),
   neonpanda: (f, b, p) => spawnShieldBurst(f, "#5bf2ff", 14, 4.0, 13 * p * b, 7.0),
@@ -3268,11 +3333,11 @@ const uniqueSpecialMechanics = {
   laserbear: (f) => launchProjectile(f, { color: "#ff5252", emissive: "#ffe066", radius: 0.32, speed: 20, life: 1.0, damage: 15, force: 7.2 }),
   turbosnail: (f) => launchProjectile(f, { shape: "wave", color: "#ff9e5e", emissive: "#66e4ee", radius: 0.42, speed: 14, life: 1.9, damage: 12, force: 6.0, boomerang: true }),
   voltbunny: (f, b, p) => spawnVoltChain(f, "#5cf2ff", 12 * p * b, 5.8),
-  goldenknight: (f, b, p) => spawnShieldBurst(f, "#ffd43b", 15, 4.2, 14.5 * p * b, 7.4),
+  goldenknight: (f, b, p) => spawnChargeDash(f, "#ffd43b", 14.5 * p * b, 7.4, 13),
   cheesewizard: (f) => spawnBoulderRoll(f, "#ffd93b", 11, 6.8),
   discoagent: (f) => [-2, 0, 2].forEach((s) => launchProjectile(f, { shape: "star", color: "#d966ff", emissive: "#5cf2ff", radius: 0.25, speed: 12, life: 1.6, damage: 8, force: 4.4, vz: s * 1.8 })),
   ironbeaver: (f, b, p) => spawnGroundPound(f, "#e6ccb2", 13 * p * b, 6.2),
-  starjelly: (f) => applyAreaAbility(f, { radius: 4.5, damage: 12.5, force: 6.0, color: "#7cf2ff", pull: true }),
+  starjelly: (f) => spawnJellySplash(f, "#7cf2ff", 12.5, 6.0),
   cometkid: (f) => spawnMeteorDrop(f, "#ff884d", 14.5, 7.2),
   spookybat: (f, b, p) => {
     f.vy = 8.0;
@@ -3308,7 +3373,7 @@ const uniqueSpecialMechanics = {
     if (t && Math.hypot(t.x - f.x, t.z - f.z) < 2.6) hitTarget(f, t, 12 * p * b, 6);
   },
   pinwheel: (f) => [-1, 0, 1].forEach((s) => launchProjectile(f, { shape: "star", color: "#ffb347", emissive: "#ff5e8a", radius: 0.26, speed: 10, life: 1.6, damage: 8, force: 4.6, vz: s * 1.6, boomerang: true })),
-  shellbeetle: (f, b, p) => spawnShieldBurst(f, "#ffd166", 12, 3.6, 13 * p * b, 6.6),
+  shellbeetle: (f, b, p) => spawnWallWave(f, "#ffd166", 12 * p * b, 6.2),
   gusty: (f) => [-1, 1].forEach((s) => launchProjectile(f, { shape: "wave", color: "#d4c4ff", emissive: "#ffe066", radius: 0.5, speed: 10, life: 1.5, damage: 10, force: 6.2, offsetZ: s * 0.5 })),
   entity: (f) => applyAreaAbility(f, { radius: 5.0, damage: 15, force: 6.5, color: "#b774ff", pull: true })
 };
@@ -4088,12 +4153,16 @@ window.addEventListener("pointermove", (event) => {
 function updateCameraOrbit(delta) {
   const altHeld = keys.has("AltLeft") || keys.has("AltRight");
   if (!altHeld) return;
-  // Arrow keys double as Player 2 controls, so hide them from gameplay while orbiting
-  for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]) keys.delete(code);
-  if (keys.has("ArrowLeft")) cameraOrbit.yaw -= delta * 1.6;
-  if (keys.has("ArrowRight")) cameraOrbit.yaw += delta * 1.6;
-  if (keys.has("ArrowUp")) cameraOrbit.zoom = Math.max(0.6, cameraOrbit.zoom - delta * 0.8);
-  if (keys.has("ArrowDown")) cameraOrbit.zoom = Math.min(1.8, cameraOrbit.zoom + delta * 0.8);
+  // Arrow and WASD keys double as gameplay controls, so hide them from gameplay while orbiting
+  const orbitLeft = keys.has("ArrowLeft") || keys.has("KeyA");
+  const orbitRight = keys.has("ArrowRight") || keys.has("KeyD");
+  const zoomIn = keys.has("ArrowUp") || keys.has("KeyW");
+  const zoomOut = keys.has("ArrowDown") || keys.has("KeyS");
+  for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS"]) keys.delete(code);
+  if (orbitLeft) cameraOrbit.yaw -= delta * 1.6;
+  if (orbitRight) cameraOrbit.yaw += delta * 1.6;
+  if (zoomIn) cameraOrbit.zoom = Math.max(0.6, cameraOrbit.zoom - delta * 0.8);
+  if (zoomOut) cameraOrbit.zoom = Math.min(1.8, cameraOrbit.zoom + delta * 0.8);
   if (keys.has("Digit0")) {
     cameraOrbit.yaw = 0;
     cameraOrbit.zoom = 1;
@@ -4101,17 +4170,63 @@ function updateCameraOrbit(delta) {
   }
 }
 
-function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ) {
+function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ, cam = camera) {
   const dx = baseX - focusX;
   const dz = baseZ - focusZ;
   const cos = Math.cos(cameraOrbit.yaw);
   const sin = Math.sin(cameraOrbit.yaw);
-  camera.position.set(
+  cam.position.set(
     focusX + (dx * cos - dz * sin) * cameraOrbit.zoom,
     baseY,
     focusZ + (dx * sin + dz * cos) * cameraOrbit.zoom
   );
-  camera.lookAt(focusX, lookY, focusZ);
+  cam.lookAt(focusX, lookY, focusZ);
+}
+
+// Split-screen player 2 gets its own rig and camera; player 1 keeps the main camera
+const splitRig = {
+  focus: new THREE.Vector3(0, 1.35, 0),
+  position: new THREE.Vector3()
+};
+const splitCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 500);
+
+function followFighterCamera(rig, cam, subject, delta) {
+  cam.clearViewOffset();
+  rig.focus.x = THREE.MathUtils.damp(rig.focus.x, subject.x, 6, delta);
+  rig.focus.z = THREE.MathUtils.damp(rig.focus.z, subject.z, 6, delta);
+  rig.focus.y = THREE.MathUtils.damp(rig.focus.y, Math.max(1.35, subject.y + 1.35), 4, delta);
+  const distance = Math.max(22, floorRadius * 0.45);
+  placeCameraWithOrbit(
+    rig.focus.x,
+    rig.focus.z,
+    rig.focus.y,
+    rig.focus.x,
+    Math.max(7.6, rig.focus.y + 6.2),
+    rig.focus.z + distance,
+    cam
+  );
+}
+
+function renderSplitScreen() {
+  const width = renderer.domElement.width;
+  const height = renderer.domElement.height;
+  const half = Math.floor(width / 2);
+  const views = [
+    { cam: camera, x: 0, w: half },
+    { cam: splitCamera, x: half, w: width - half }
+  ];
+  renderer.setScissorTest(true);
+  for (const view of views) {
+    renderer.setViewport(view.x, 0, view.w, height);
+    renderer.setScissor(view.x, 0, view.w, height);
+    view.cam.aspect = view.w / height;
+    view.cam.updateProjectionMatrix();
+    renderer.render(scene, view.cam);
+  }
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, width, height);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
 }
 
 function updateCamera(delta) {
@@ -4239,6 +4354,561 @@ function animatePortal(elapsed, delta) {
   cyanLight.intensity = 6 + Math.sin(elapsed * 1.6 + 1) * 2;
 }
 
+// Explore mode: a free-flight ship climbs a floating platform course to Entity.exe
+const EXPLORE_ENTITY_BASE = new THREE.Vector3(0, 86, 0);
+const EXPLORE_ENTITY_MAX_HP = 90;
+const EXPLORE_ITEM_COUNT = 8;
+let explore = null;
+
+// Builds a spaceship that flies along +z, so the nose lines up with lookAt
+function buildSpaceshipVisual(colors, scale) {
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  body.scale.setScalar(scale);
+  root.add(body);
+  const hullMat = material(colors.body, 0.32, 0.45);
+  const trimMat = material(colors.trim, 0.3, 0.3, { emissive: colors.trim, emissiveIntensity: 0.7 });
+  const darkMat = material(colors.dark, 0.5, 0.35);
+  const glassMat = material("#9ff3ff", 0.1, 0.2, { emissive: "#4ce9ff", emissiveIntensity: 0.6, transparent: true, opacity: 0.85 });
+
+  addMesh(body, new THREE.CapsuleGeometry(0.42, 1.5, 6, 14), hullMat, [0, 0, 0]).rotation.x = Math.PI / 2;
+  addMesh(body, new THREE.ConeGeometry(0.42, 1.2, 14), hullMat, [0, 0, 1.75]).rotation.x = Math.PI / 2;
+  addMesh(body, new THREE.BoxGeometry(3, 0.09, 0.9), darkMat, [0, -0.05, 0.1]);
+  for (const side of [-1, 1]) {
+    addMesh(body, new THREE.BoxGeometry(0.08, 0.6, 0.9), trimMat, [side * 1.5, 0.25, 0.1]);
+    addMesh(body, new THREE.CylinderGeometry(0.2, 0.26, 0.6, 12), darkMat, [side * 0.55, -0.05, -1.1]).rotation.x = Math.PI / 2;
+  }
+  addMesh(body, new THREE.SphereGeometry(0.3, 14, 10), glassMat, [0, 0.36, 0.7], [1, 0.6, 1.5]);
+  addMesh(body, new THREE.BoxGeometry(0.1, 0.1, 2.1), trimMat, [0, 0.42, -0.1]);
+  return root;
+}
+
+function createLabelSprite(text, color) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 128;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "rgba(8, 6, 20, 0.72)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "bold 64px monospace";
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 4);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
+  sprite.scale.set(6, 1.5, 1);
+  return sprite;
+}
+
+function createExploreWorld() {
+  const group = new THREE.Group();
+  scene.add(group);
+
+  const ship = new THREE.Group();
+  group.add(ship);
+  const palette = characters[selectedFighter].palette;
+  ship.add(buildSpaceshipVisual({ body: palette.primary, trim: palette.trim, dark: palette.dark }, 1));
+  const thruster = addMesh(ship, new THREE.SphereGeometry(0.32, 10, 8), material("#4ce9ff", 0.2, 0, { emissive: "#4ce9ff", emissiveIntensity: 1.6 }), [0, 0, -1.9]);
+
+  const planetPalette = ["#ff8fb1", "#7fd8ff", "#ffd166", "#b8a2ff", "#72e0a2"];
+  const planets = [];
+  for (let index = 0; index < 14; index += 1) {
+    const radius = index === 0 ? 6 : 3.4 + (index % 3) * 1.1;
+    const angle = index * 0.9;
+    const ring = 16 + (index % 3) * 3;
+    const center = index === 0
+      ? new THREE.Vector3(0, -radius, 0)
+      : new THREE.Vector3(Math.cos(angle) * ring, 4 + index * 5.4, Math.sin(angle) * ring);
+    const color = planetPalette[index % planetPalette.length];
+    const planetMesh = addMesh(group, new THREE.SphereGeometry(radius, 20, 14), material(color, 0.65, 0.1, { emissive: color, emissiveIntensity: 0.1 }), center.toArray());
+    if (index % 2 === 0) {
+      addMesh(planetMesh, new THREE.TorusGeometry(radius * 1.6, 0.16, 6, 36), material("#fff1c9", 0.4, 0.2), [0, 0, 0]).rotation.x = 1.1;
+    }
+    planets.push({ center, radius });
+  }
+
+  const planetColors = ["#ff8fb1", "#7fd8ff", "#ffd166", "#b8a2ff", "#72e0a2"];
+  for (let index = 0; index < 14; index += 1) {
+    const radius = 12 + Math.random() * 30;
+    addMesh(
+      group,
+      new THREE.SphereGeometry(radius, 24, 16),
+      material(planetColors[index % planetColors.length], 0.7, 0.05, { emissive: planetColors[index % planetColors.length], emissiveIntensity: 0.08 }),
+      [(Math.random() - 0.5) * 520, (Math.random() - 0.5) * 220, -120 - Math.random() * 300]
+    );
+  }
+
+  // Rocks sit beside each planet-to-planet hop; every other hop has a gate to fly through
+  const rockMat = material("#6b6f86", 0.9, 0.05);
+  const rockGeometry = new THREE.DodecahedronGeometry(1.8, 0);
+  const gateMat = material("#4ce9ff", 0.3, 0.2, { emissive: "#4ce9ff", emissiveIntensity: 0.9 });
+  const obstacles = [];
+  const gates = [];
+  for (let index = 0; index < planets.length - 1; index += 1) {
+    const from = planets[index].center;
+    const to = planets[index + 1].center;
+    const mid = from.clone().lerp(to, 0.5);
+    const side = new THREE.Vector3(to.z - from.z, 0, from.x - to.x).normalize().multiplyScalar(5 + (index % 2) * 3);
+    const rock = addMesh(group, rockGeometry, rockMat, mid.clone().add(side).toArray());
+    obstacles.push({ mesh: rock, radius: 2.2, spin: 0.6 + (index % 3) * 0.3 });
+    if (index % 2 === 0) {
+      const gate = addMesh(group, new THREE.TorusGeometry(3.2, 0.25, 8, 28), gateMat, mid.clone().sub(side.clone().multiplyScalar(0.4)).toArray());
+      gate.lookAt(to);
+      gates.push({ mesh: gate, center: gate.position.clone(), passed: false });
+    }
+  }
+
+  const itemMat = material("#ffd166", 0.2, 0.3, { emissive: "#ffb000", emissiveIntensity: 1.2 });
+  const itemGeometry = new THREE.OctahedronGeometry(0.9, 0);
+  const items = [];
+  for (let index = 0; index < EXPLORE_ITEM_COUNT; index += 1) {
+    const angle = index * 0.9 + 0.4;
+    const radius = 20 + (index % 3) * 6;
+    const position = new THREE.Vector3(Math.cos(angle) * radius, 4 + (index % 4) * 5, Math.sin(angle) * radius);
+    const mesh = addMesh(group, itemGeometry, itemMat, position.toArray());
+    items.push({ mesh, base: position, taken: false });
+  }
+
+  // Small fighter pairs clash on the planets below the flight path
+  const battleMats = [
+    material("#72e0a2", 0.5, 0.1),
+    material("#ffd166", 0.5, 0.1),
+    material("#ff7189", 0.5, 0.1),
+    material("#7fd8ff", 0.5, 0.1)
+  ];
+  const sparkMat = new THREE.MeshBasicMaterial({ color: "#fff6a0", transparent: true, opacity: 0 });
+  const battles = [];
+  for (let index = 0; index < 6; index += 1) {
+    const angle = index * 1.05;
+    const pair = new THREE.Group();
+    pair.position.set(Math.cos(angle) * 34, -10, Math.sin(angle) * 34);
+    group.add(pair);
+    const left = addMesh(pair, new THREE.BoxGeometry(1.4, 2, 1.4), battleMats[index % 4], [-1.6, 1, 0]);
+    const right = addMesh(pair, new THREE.BoxGeometry(1.4, 2, 1.4), battleMats[(index + 1) % 4], [1.6, 1, 0]);
+    const spark = addMesh(pair, new THREE.SphereGeometry(0.9, 8, 6), sparkMat, [0, 1.6, 0]);
+    battles.push({ left, right, spark, center: pair.position.clone(), phase: index * 1.7, calm: 0 });
+  }
+
+  const entityMesh = new THREE.Group();
+  entityMesh.position.copy(EXPLORE_ENTITY_BASE);
+  group.add(entityMesh);
+  entityMesh.add(buildSpaceshipVisual({ body: "#2b0f24", trim: "#ff3a7a", dark: "#120811" }, 2.2));
+  const label = createLabelSprite("ENTITY.EXE", "#ff9ac0");
+  label.position.set(0, 3.4, 0);
+  entityMesh.add(label);
+
+  return {
+    group,
+    ship,
+    thruster,
+    position: planets[0].center.clone().add(new THREE.Vector3(0, planets[0].radius + 1, 0)),
+    velocity: new THREE.Vector3(),
+    forward: new THREE.Vector3(0, 0, -1),
+    up: new THREE.Vector3(0, 1, 0),
+    yaw: 0,
+    turnRate: 0,
+    bank: 0,
+    pitch: 0,
+    hull: 100,
+    fireCooldown: 0,
+    hurtTimer: 0,
+    planets,
+    items,
+    itemsFound: 0,
+    battles,
+    obstacles,
+    gates,
+    sparkMat,
+    bolts: [],
+    boltGeometry: new THREE.SphereGeometry(0.35, 8, 6),
+    playerBoltMat: new THREE.MeshBasicMaterial({ color: "#4ce9ff" }),
+    entityBoltMat: new THREE.MeshBasicMaterial({ color: "#ff4fd8" }),
+    entityMesh,
+    entityAnchor: EXPLORE_ENTITY_BASE.clone(),
+    entityHp: EXPLORE_ENTITY_MAX_HP,
+    entityFireTimer: 1.5,
+    teleportTimer: 5,
+    glitch: 0,
+    time: 0,
+    camPos: new THREE.Vector3(0, 5.2, 9),
+    status: "",
+    over: false
+  };
+}
+
+function startExplore() {
+  selectionScreenActive = false;
+  titlePlanets.visible = false;
+  clearInputState();
+  clearFighters();
+  explore = createExploreWorld();
+  explore.arenaWasVisible = arena.visible;
+  arena.visible = false;
+  matchActive = false;
+  document.querySelector("#portal-screen").hidden = true;
+  document.querySelector("#select-screen").hidden = true;
+  document.querySelector("#arena-strip").hidden = true;
+  document.querySelector("#match-end").hidden = true;
+  document.querySelector("#return-through-portal").hidden = true;
+  document.querySelector("#battle-hud").hidden = false;
+  document.querySelector("#touch-controls").hidden = false;
+  document.querySelectorAll('[id^="player-"][id$="-panel"]').forEach((panel) => {
+    panel.hidden = true;
+  });
+  document.querySelector("#battle-arena-name").textContent = "GALAXY EXPLORE";
+  document.querySelector("#match-clock").textContent = "∞";
+  document.querySelector("#explore-minimap").hidden = false;
+  updateControlsHint();
+  renderer.domElement.focus();
+  setMusicScene("battle");
+}
+
+function clearExplore() {
+  if (!explore) return;
+  disposeExploreWorld(explore);
+  explore = null;
+}
+
+function disposeExploreWorld(world) {
+  scene.remove(world.group);
+  disposeObject(world.group);
+  world.boltGeometry.dispose();
+  world.playerBoltMat.dispose();
+  world.entityBoltMat.dispose();
+  world.sparkMat.dispose();
+  arena.visible = world.arenaWasVisible;
+  camera.up.set(0, 1, 0);
+  document.querySelector("#explore-minimap").hidden = true;
+}
+
+function updateExploreBattles(world, delta) {
+  world.battles.forEach((battle) => {
+    battle.calm = Math.max(0, battle.calm - delta);
+    const time = world.time + battle.phase;
+    if (battle.calm > 0) {
+      battle.left.position.x = -0.6;
+      battle.right.position.x = 0.6;
+      battle.spark.material.opacity = 0.35;
+      battle.spark.scale.setScalar(0.6);
+      return;
+    }
+    battle.left.position.x = -1.6 + Math.sin(time * 3) * 0.8;
+    battle.right.position.x = 1.6 - Math.sin(time * 3) * 0.8;
+    const flash = Math.max(0, Math.sin(time * 6));
+    battle.spark.material.opacity = Math.pow(flash, 6) * 0.9;
+    battle.spark.scale.setScalar(0.6 + flash * 0.8);
+  });
+}
+
+function updateExploreObstacles(world, delta) {
+  world.obstacles.forEach((rock) => {
+    rock.mesh.rotation.y += delta * rock.spin;
+    const offset = world.position.clone().sub(rock.mesh.position);
+    const distance = offset.length();
+    if (distance < rock.radius + 1 && world.hurtTimer <= 0) {
+      const normal = offset.normalize();
+      world.position.copy(rock.mesh.position).addScaledVector(normal, rock.radius + 1.1);
+      world.velocity.reflect(normal).multiplyScalar(0.5);
+      world.hull = Math.max(0, world.hull - 8);
+      world.hurtTimer = 0.4;
+    }
+  });
+  world.gates.forEach((gate) => {
+    if (gate.passed || world.position.distanceTo(gate.center) > 3.2) return;
+    gate.passed = true;
+    gate.mesh.scale.setScalar(1.25);
+    world.hull = Math.min(100, world.hull + 6);
+  });
+}
+
+function updateExploreItems(world, delta) {
+  world.items.forEach((item) => {
+    if (item.taken) return;
+    item.mesh.rotation.y += delta * 2;
+    item.mesh.position.y = item.base.y + Math.sin(world.time * 2 + item.base.x) * 0.4;
+  });
+}
+
+function collectExploreItems(world) {
+  world.items.forEach((item) => {
+    if (item.taken || world.position.distanceTo(item.mesh.position) > 2.6) return;
+    item.taken = true;
+    item.mesh.visible = false;
+    world.itemsFound += 1;
+    world.hull = Math.min(100, world.hull + 10);
+  });
+}
+
+function endExplore(won) {
+  explore.over = true;
+  clearInputState();
+  document.querySelector("#battle-status").textContent = won ? "ENTITY.EXE DELETED" : "HULL FAILURE";
+  document.querySelector("#match-end-status").textContent = "EXPLORE COMPLETE";
+  document.querySelector("#winner-title").textContent = won ? "ENTITY.EXE DELETED" : "ENTITY.EXE WINS";
+  document.querySelector("#winner-message").textContent = won
+    ? "You climbed the platform course through the galaxy and deleted Entity.exe."
+    : "Your ship was deleted. Climb back up the course and try again.";
+  document.querySelector("#touch-controls").hidden = true;
+  document.querySelector("#return-through-portal").hidden = true;
+  document.querySelector("#match-end").hidden = false;
+  document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
+}
+
+function spawnExploreBolt(world, origin, direction, owner) {
+  const mesh = new THREE.Mesh(world.boltGeometry, owner === "player" ? world.playerBoltMat : world.entityBoltMat);
+  mesh.position.copy(origin);
+  world.group.add(mesh);
+  world.bolts.push({ mesh, velocity: direction.clone().multiplyScalar(owner === "player" ? 60 : 24), life: 2.2, owner });
+}
+
+function resolveExplorePlanets(world) {
+  for (const planet of world.planets) {
+    const offset = world.position.clone().sub(planet.center);
+    const distance = offset.length();
+    const minimum = planet.radius + 1.2;
+    if (distance >= minimum || distance === 0) continue;
+    const normal = offset.normalize();
+    world.position.copy(planet.center).addScaledVector(normal, minimum);
+    const inward = world.velocity.dot(normal);
+    if (inward < 0) world.velocity.addScaledVector(normal, -inward * 1.4);
+    if (world.hurtTimer <= 0) {
+      world.hull = Math.max(0, world.hull - 4);
+      world.hurtTimer = 0.4;
+    }
+  }
+}
+
+const EXPLORE_BOUNDS = 160;
+
+function resolveExploreBounds(world) {
+  const limits = { x: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS], y: [-60, 130], z: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS] };
+  for (const axis of ["x", "y", "z"]) {
+    const [min, max] = limits[axis];
+    if (world.position[axis] > max) {
+      world.position[axis] = max;
+      world.velocity[axis] = -Math.abs(world.velocity[axis]) * 0.5;
+    } else if (world.position[axis] < min) {
+      world.position[axis] = min;
+      world.velocity[axis] = Math.abs(world.velocity[axis]) * 0.5;
+    }
+  }
+}
+
+const MINIMAP_RANGE = 70;
+
+function drawExploreMinimap(world) {
+  const canvas = document.querySelector("#explore-minimap");
+  const ctx = canvas.getContext("2d");
+  const size = canvas.width;
+  const half = size / 2;
+  const scale = half / MINIMAP_RANGE;
+  const toMap = (x, z) => [half + x * scale, half + z * scale];
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = "rgba(6, 10, 26, 0.78)";
+  ctx.beginPath();
+  ctx.arc(half, half, half - 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(76, 233, 255, 0.6)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "#7fd8ff";
+  world.planets.forEach((planet) => {
+    const [x, y] = toMap(planet.center.x, planet.center.z);
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(2.5, planet.radius * scale), 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.fillStyle = "#ff8fb1";
+  world.battles.forEach((battle) => {
+    const [x, y] = toMap(battle.center.x, battle.center.z);
+    ctx.fillRect(x - 2, y - 2, 4, 4);
+  });
+  ctx.fillStyle = "#ffd166";
+  world.items.forEach((item) => {
+    if (item.taken) return;
+    const [x, y] = toMap(item.base.x, item.base.z);
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  });
+
+  const entityPosition = world.entityMesh.position;
+  const [ex, ey] = toMap(entityPosition.x, entityPosition.z);
+  const edge = half - 14;
+  const dx = ex - half;
+  const dy = ey - half;
+  const outside = Math.hypot(dx, dy) > edge;
+  const blink = Math.floor(world.time * 4) % 2 === 0;
+  if (!outside || blink) {
+    const clamp = outside ? edge / Math.hypot(dx, dy) : 1;
+    ctx.fillStyle = "#ff4fd8";
+    ctx.beginPath();
+    ctx.arc(half + dx * clamp, half + dy * clamp, outside ? 5 : 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const [sx, sy] = toMap(world.position.x, world.position.z);
+  const heading = Math.atan2(world.forward.z, world.forward.x);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(heading + Math.PI / 2);
+  ctx.fillStyle = "#4ce9ff";
+  ctx.beginPath();
+  ctx.moveTo(0, -7);
+  ctx.lineTo(5, 5);
+  ctx.lineTo(-5, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  const distance = Math.round(world.position.distanceTo(entityPosition));
+  const altitude = Math.round(entityPosition.y - world.position.y);
+  ctx.fillStyle = "#ffe0f0";
+  ctx.font = "bold 12px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`ENTITY ${distance}m`, half, size - 22);
+  ctx.fillText(`${altitude >= 0 ? "▲" : "▼"} ${Math.abs(altitude)}m alt`, half, size - 8);
+}
+
+
+function updateExploreEntity(world, delta) {
+  const entity = world.entityMesh;
+  world.teleportTimer -= delta;
+  if (world.teleportTimer <= 0) {
+    world.teleportTimer = 5 + Math.random() * 2;
+    world.entityAnchor.set(
+      EXPLORE_ENTITY_BASE.x + (Math.random() - 0.5) * 24,
+      EXPLORE_ENTITY_BASE.y + (Math.random() - 0.5) * 6,
+      EXPLORE_ENTITY_BASE.z + (Math.random() - 0.5) * 24
+    );
+    world.glitch = 0.6;
+  }
+  const t = world.time;
+  const goalX = world.entityAnchor.x + Math.cos(t * 0.7) * 5;
+  const goalY = world.entityAnchor.y + Math.sin(t * 1.3) * 1.2;
+  const goalZ = world.entityAnchor.z + Math.sin(t * 0.7) * 5;
+  const blend = 1 - Math.exp(-delta * 2.5);
+  entity.position.x += (goalX - entity.position.x) * blend;
+  entity.position.y += (goalY - entity.position.y) * blend;
+  entity.position.z += (goalZ - entity.position.z) * blend;
+  entity.lookAt(world.position);
+  world.glitch = Math.max(0, world.glitch - delta);
+  entity.visible = world.glitch <= 0 || Math.floor(t * 24) % 2 === 0;
+
+  world.entityFireTimer -= delta;
+  if (world.entityFireTimer <= 0) {
+    const healthRatio = world.entityHp / EXPLORE_ENTITY_MAX_HP;
+    world.entityFireTimer = 1.5 - (1 - healthRatio) * 0.7;
+    const direction = world.position.clone().sub(entity.position).normalize();
+    spawnExploreBolt(world, entity.position, direction, "entity");
+  }
+}
+
+function updateExploreBolts(world, delta) {
+  for (let index = world.bolts.length - 1; index >= 0; index -= 1) {
+    const bolt = world.bolts[index];
+    bolt.mesh.position.addScaledVector(bolt.velocity, delta);
+    bolt.life -= delta;
+    let remove = bolt.life <= 0;
+    if (bolt.owner === "player") {
+      const battle = world.battles.find((item) => bolt.mesh.position.distanceTo(item.center) < 4);
+      if (battle) {
+        battle.calm = 6;
+        world.hull = Math.min(100, world.hull + 4);
+        remove = true;
+      }
+    }
+    if (bolt.owner === "player" && bolt.mesh.position.distanceTo(world.entityMesh.position) < 3) {
+      world.entityHp = Math.max(0, world.entityHp - 4);
+      world.glitch = 0.15;
+      remove = true;
+    } else if (bolt.owner === "entity" && bolt.mesh.position.distanceTo(world.position) < 1.3 && world.hurtTimer <= 0) {
+      world.hull = Math.max(0, world.hull - 6);
+      world.hurtTimer = 0.4;
+      remove = true;
+    }
+    if (remove) {
+      world.group.remove(bolt.mesh);
+      world.bolts.splice(index, 1);
+    }
+  }
+}
+
+function updateExplore(delta) {
+  const world = explore;
+  world.time += delta;
+
+  const turn = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
+  world.turnRate = THREE.MathUtils.lerp(world.turnRate, turn * 2.2, 1 - Math.exp(-8 * delta));
+  world.yaw += world.turnRate * delta;
+  world.bank = THREE.MathUtils.lerp(world.bank, turn * 0.5, 1 - Math.exp(-6 * delta));
+
+  const pitchInput = (keys.has("KeyR") ? 1 : 0) - (keys.has("KeyF") ? 1 : 0);
+  world.pitch = THREE.MathUtils.clamp(world.pitch + pitchInput * delta * 1.2, -1.2, 1.2);
+  const cosPitch = Math.cos(world.pitch);
+  world.forward.set(-Math.sin(world.yaw) * cosPitch, Math.sin(world.pitch), -Math.cos(world.yaw) * cosPitch);
+  const right = world.forward.clone().cross(world.up).normalize();
+
+  const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1.9 : 1;
+  const forwardInput = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 0.5 : 0);
+  const strafe = (keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0);
+  const rise = (keys.has("Space") ? 1 : 0) - (keys.has("KeyC") || keys.has("ControlRight") ? 1 : 0);
+  const speed = 18 * boost;
+  const target = world.forward.clone().multiplyScalar(forwardInput * speed);
+  target.addScaledVector(right, strafe * speed * 0.6);
+  target.y += rise * speed * 0.6;
+  world.velocity.lerp(target, 1 - Math.exp(-2.5 * delta));
+  world.position.addScaledVector(world.velocity, delta);
+  resolveExploreBounds(world);
+  resolveExplorePlanets(world);
+
+  world.ship.position.copy(world.position);
+  world.ship.lookAt(world.position.clone().add(world.forward));
+  world.ship.rotateZ(world.bank);
+  const flare = forwardInput > 0 ? (boost > 1 ? 2.6 : 1.4) : 0.6;
+  world.thruster.scale.set(1, 1, flare + Math.sin(world.time * 24) * 0.15);
+
+  world.fireCooldown = Math.max(0, world.fireCooldown - delta);
+  if (keys.has("KeyJ") && world.fireCooldown <= 0) {
+    world.fireCooldown = 0.22;
+    const nose = world.position.clone().addScaledVector(world.forward, 1.6);
+    spawnExploreBolt(world, nose, world.forward, "player");
+  }
+
+  updateExploreEntity(world, delta);
+  updateExploreBolts(world, delta);
+  updateExploreBattles(world, delta);
+  updateExploreItems(world, delta);
+  updateExploreObstacles(world, delta);
+  collectExploreItems(world);
+  world.hurtTimer = Math.max(0, world.hurtTimer - delta);
+  if (world.position.distanceTo(world.entityMesh.position) < 3.6) {
+    world.hull = Math.max(0, world.hull - 20 * delta);
+  }
+
+  if (world.hull <= 0) {
+    endExplore(false);
+  } else if (world.entityHp <= 0) {
+    endExplore(true);
+  }
+
+  const desired = world.position.clone().addScaledVector(world.forward, -10).addScaledVector(world.up, 4);
+  world.camPos.lerp(desired, 1 - Math.exp(-6 * delta));
+  camera.clearViewOffset();
+  camera.up.copy(world.up);
+  camera.position.copy(world.camPos);
+  camera.lookAt(world.position.clone().addScaledVector(world.forward, 4).addScaledVector(world.up, 1));
+
+  const status = `ENTITY.EXE ${Math.ceil(world.entityHp)}/${EXPLORE_ENTITY_MAX_HP} · HULL ${Math.ceil(world.hull)}% · ITEMS ${world.itemsFound}/${EXPLORE_ITEM_COUNT}`;
+  drawExploreMinimap(world);
+  if (status !== world.status) {
+    world.status = status;
+    document.querySelector("#battle-status").textContent = status;
+  }
+}
+
 function frame(timestamp = 0) {
   if (document.hidden) {
     keys.clear();
@@ -4253,7 +4923,9 @@ function frame(timestamp = 0) {
   const elapsed = clock.elapsedTime;
   animatePortal(elapsed, delta);
   updateCameraOrbit(delta);
-  if (matchActive) {
+  if (explore) {
+    if (!explore.over) updateExplore(delta);
+  } else if (matchActive) {
     if (!portalIntroActive) updateClock(delta);
     for (let index = 0; index < fighters.length; index += 1) {
       updateFighter(fighters[index], index, delta, elapsed);
@@ -4266,7 +4938,12 @@ function frame(timestamp = 0) {
     if (secretPortalPending) beginSecretChallenge();
     updateProjectiles(delta);
     updateHitEffects(delta);
-    updateCamera(delta);
+    if (battleMode === "split" && fighters.length === 2) {
+      followFighterCamera(cameraRig, camera, fighters[0], delta);
+      followFighterCamera(splitRig, splitCamera, fighters[1], delta);
+    } else {
+      updateCamera(delta);
+    }
     if (hudDirty) updateHud();
   } else if (fighters.length === 0) {
     // On the select screen the camera drifts toward the cursor but always aims at the fighter
@@ -4309,7 +4986,10 @@ function frame(timestamp = 0) {
   justPressed.clear();
   realmBackdrop.rotation.y += delta * 0.01;
   updateArenaStreaming();
-  if (!graphicsContextLost) renderer.render(scene, camera);
+  if (!graphicsContextLost) {
+    if (battleMode === "split" && fighters.length === 2 && !explore) renderSplitScreen();
+    else renderer.render(scene, camera);
+  }
   animationFrame = requestAnimationFrame(frame);
 }
 
@@ -4568,12 +5248,25 @@ document.querySelector("#leave-battle").addEventListener("click", showSelection)
 document.querySelector("#rematch").addEventListener("click", () => startMatch(secretChallengeActive ? "entity" : null));
 document.querySelector("#return-to-select").addEventListener("click", showSelection);
 document.querySelector("#return-through-portal").addEventListener("click", showSelection);
-document.querySelector("#toggle-mode").addEventListener("click", () => {
-  battleMode = battleMode === "cpu" ? "local" : "cpu";
-  document.querySelector("#mode-label").textContent = battleMode === "cpu" ? "Solo vs. 5 CPUs" : "Local 4-player";
-  document.querySelector("#toggle-mode").textContent = battleMode === "cpu" ? "Local 4-player" : "Solo vs. CPUs";
+const battleModeCycle = [
+  { id: "explore", label: "Adventure: Entity.exe hunt", short: "ADVENTURE" },
+  { id: "cpu", label: "Solo vs. 5 CPUs", short: "SOLO VS CPUS" },
+  { id: "local", label: "Local 4-player", short: "LOCAL 4-PLAYER" },
+  { id: "split", label: "Split-screen 1v1", short: "SPLIT-SCREEN 1V1" }
+];
+function cycleBattleMode() {
+  const currentIndex = battleModeCycle.findIndex((mode) => mode.id === battleMode);
+  battleMode = battleModeCycle[(currentIndex + 1) % battleModeCycle.length].id;
+  syncBattleModeUi();
+}
+function syncBattleModeUi() {
+  const current = battleModeCycle.find((mode) => mode.id === battleMode);
+  document.querySelector("#mode-label").textContent = current.label;
   updateControlsHint();
-});
+}
+document.querySelector("#toggle-mode").addEventListener("click", cycleBattleMode);
+syncBattleModeUi();
+
 document.querySelector("#resolution-select").addEventListener("change", (event) => {
   setRenderQuality(Number(event.target.value), renderQuality.fps);
 });
@@ -4609,15 +5302,15 @@ document.querySelectorAll(".fighter-card").forEach(bindFighterCard);
 
 window.addEventListener("keydown", (event) => {
   const supported = [
-    "KeyA", "KeyD", "KeyW", "KeyS", "Space", "KeyJ", "KeyK",
+    "KeyA", "KeyD", "KeyW", "KeyS", "KeyQ", "KeyE", "Space", "KeyJ", "KeyK",
     "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "ShiftRight",
     "KeyF", "KeyH", "KeyT", "KeyG", "KeyR", "KeyY", "KeyU", "KeyC", "KeyB", "ControlRight",
     "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6", "Numpad8",
-    "AltLeft", "AltRight", "Digit0"
+    "AltLeft", "AltRight", "Digit0", "ShiftLeft"
   ];
   if (event.altKey && event.code.startsWith("Arrow")) event.preventDefault();
   if (!supported.includes(event.code)) return;
-  if (matchActive) event.preventDefault();
+  if (matchActive || explore) event.preventDefault();
   if (!keys.has(event.code)) justPressed.add(event.code);
   keys.add(event.code);
 });

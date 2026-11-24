@@ -164,6 +164,8 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 .select-actions p span { padding: 0 3px; color: var(--cyan); }
 .select-actions .primary-button { flex: 0 0 auto; min-height: 43px; padding: 0 16px; font-size: .8rem; }
 .battle-hud { position: absolute; top: 18px; left: 50%; display: grid; grid-template-areas: "p1 p2 clock p3 p4"; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 120px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 10px; width: min(1120px, calc(100% - 32px)); padding: 12px; transform: translateX(-50%); border: 1px solid #b1a3ff57; border-radius: 17px; background: #101329eb; box-shadow: 0 12px 45px #06071188; }
+.explore-minimap { position: absolute; top: 96px; right: 16px; width: 180px; height: 180px; border: 1px solid #b1a3ff80; border-radius: 12px; background: #050816cc; box-shadow: 0 8px 28px #0008; pointer-events: none; }
+.explore-minimap[hidden] { display: none; }
 #player-one-panel { grid-area: p1; }
 #player-two-panel { grid-area: p2; }
 #player-three-panel { grid-area: p3; }
