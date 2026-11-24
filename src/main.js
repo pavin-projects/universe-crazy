@@ -3871,8 +3871,9 @@ function updateFighter(fighter, index, delta, elapsed) {
       if (!surface.solid) continue;
       const offsetX = fighter.x - surface.x;
       const offsetZ = fighter.z - surface.z;
-      const reachX = surface.round ? surface.halfWidth * 0.92 : surface.halfWidth + fighterBodyRadius;
-      const reachZ = surface.round ? surface.halfDepth * 0.92 : surface.halfDepth + fighterBodyRadius;
+      // The 8-sided rim's flat faces sit at ~0.92 of its radius; add the body radius so fighters stop at the visible edge
+      const reachX = (surface.round ? surface.halfWidth * 0.92 : surface.halfWidth) + fighterBodyRadius;
+      const reachZ = (surface.round ? surface.halfDepth * 0.92 : surface.halfDepth) + fighterBodyRadius;
       const normalized = Math.hypot(offsetX / reachX, offsetZ / reachZ);
       const insideFootprint = surface.round ? normalized < 1 : Math.abs(offsetX) < reachX && Math.abs(offsetZ) < reachZ;
       if (!insideFootprint) continue;
