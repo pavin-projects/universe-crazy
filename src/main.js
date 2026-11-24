@@ -1,4 +1,9 @@
 import * as THREE from "three";
+import { setOnlineListeners, initOnlineUi, restoreSession, isSignedIn, currentSkinId, hostOrJoinMatch, leaveMatch, sendOnlineState, sendOnlineHit, reportOnlineResult, openAccountFor } from "./online.js";
+import { skinById } from "../shared/skins.js";
+
+let onlineSendTimer = 0;
+let onlineRemotes = [];
 
 const FIGHTER_SCALE = 0.85;
 const MAP_SCALE = 3;
@@ -2745,13 +2750,26 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   const opponentPool = regularCharacterIds.filter((kind) => kind !== selectedFighter && isFighterUnlocked(kind));
   const fallbackPool = starterCharacterIds.filter((kind) => kind !== selectedFighter);
   const activePool = opponentPool.length >= 5 ? opponentPool : [...opponentPool, ...fallbackPool];
-  const fighterCount = secretChallengeActive || battleMode === "split" ? 2 : battleMode === "cpu" ? 6 : 4;
+  const remotes = battleMode === "online" ? onlineRemotes : [];
+  const fighterCount = remotes.length
+    ? remotes.length + 1
+    : secretChallengeActive || battleMode === "split" || battleMode === "online" ? 2 : battleMode === "cpu" ? 6 : 4;
   fighters.push(makeFighter(selectedFighter, 0));
   for (let index = 1; index < fighterCount; index += 1) {
-    const kind = index === 1 && opponentOverride
-      ? opponentOverride
-      : activePool[(index - 1) % activePool.length];
-    fighters.push(makeFighter(kind, index));
+    const remote = remotes[index - 1];
+    const kind = remote
+      ? (characters[remote.kind] ? remote.kind : "bumble")
+      : index === 1 && opponentOverride
+        ? opponentOverride
+        : activePool[(index - 1) % activePool.length];
+    const fighter = makeFighter(kind, index);
+    if (remote) {
+      fighter.remote = true;
+      fighter.remoteSlot = remote.slot;
+      fighter.remoteTarget = null;
+      applyOnlineSkin(fighter, remote.skin);
+    }
+    fighters.push(fighter);
   }
   const openingLines = {
     bumble: "Let's buzz!",
@@ -2803,7 +2821,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
     const slot = ["one", "two", "three", "four", "five", "six"][index];
     document.querySelector(`#player-${slot}-panel`).hidden = index >= fighters.length;
     document.querySelector(`#player-${slot}-label`).textContent =
-      battleMode === "cpu" ? `CPU ${index}` : `PLAYER ${index + 1}`;
+      remotes[index - 1] ? remotes[index - 1].username : battleMode === "cpu" ? `CPU ${index}` : `PLAYER ${index + 1}`;
   }
   document.querySelector("#battle-status").textContent = "PORTAL ARRIVAL!";
   updateControlsHint();
@@ -2843,6 +2861,8 @@ function restoreFromSecretRealm() {
 }
 
 function showSelection() {
+  leaveMatch();
+  onlineRemotes = [];
   const enteringFromTitle = titleScreenActive;
   titleScreenActive = false;
   selectionScreenActive = true;
@@ -2918,6 +2938,7 @@ function finishMatch(winnerIndex, reason) {
     ? `${characters[winner.kind].name} takes the arena. ${reason}${unlockMessage}`
     : reason;
   document.querySelector("#match-end").hidden = false;
+  if (battleMode === "online") reportOnlineResult(winner === fighters[0]);
   document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
 }
 
@@ -3493,6 +3514,14 @@ function showKnockoutFlash(fighter) {
 
 function hitTarget(attacker, target, damage, force) {
   if (target.eliminated || target.respawn > 0 || target.invulnerable > 0) return;
+  if (target.remote) {
+    // The opponent's client owns that fighter's HP and knockback, so relay the hit and only show the impact here
+    sendOnlineHit(target.remoteSlot, damage, force);
+    target.hitFlash = 0.24;
+    spawnImpact(target, damage >= 10);
+    document.querySelector("#battle-status").textContent = `${characters[attacker.kind].name} landed a hit!`;
+    return;
+  }
   if (battleMode === "cpu" && target === fighters[0] && fighters.indexOf(attacker) > 0) {
     damage *= cpuLevelFor(attacker).damage;
   }
@@ -3753,6 +3782,10 @@ function isOverSurface(surface, x, z, margin) {
 function updateFighter(fighter, index, delta, elapsed) {
   if (fighter.eliminated) return;
   updateSpeechBubble(fighter, delta, elapsed);
+  if (fighter.remote && fighter.portalEntry <= 0) {
+    updateRemoteFighter(fighter, delta, elapsed);
+    return;
+  }
   fighter.cooldown = Math.max(0, fighter.cooldown - delta);
   fighter.specialCooldown = Math.max(0, fighter.specialCooldown - delta);
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
@@ -3941,8 +3974,11 @@ function updateFighter(fighter, index, delta, elapsed) {
       const push = (minSep - dist) * 0.5;
       fighter.x += (dx / dist) * push;
       fighter.z += (dz / dist) * push;
-      other.x -= (dx / dist) * push;
-      other.z -= (dz / dist) * push;
+      // A remote fighter's own client pushes it out of this fighter, so only move local bodies here
+      if (!other.remote) {
+        other.x -= (dx / dist) * push;
+        other.z -= (dz / dist) * push;
+      }
     }
   }
   resolveSolidSurfaces();
@@ -3960,6 +3996,10 @@ function updateFighter(fighter, index, delta, elapsed) {
     fighter.visual.userData.powerAura.visible = fighter.powerBoost > 0;
     fighter.visual.userData.powerAura.rotation.z += delta * 1.8;
   }
+  animateFighterBody(fighter, elapsed);
+}
+
+function animateFighterBody(fighter, elapsed) {
   const body = fighter.visual.userData.body;
   const movement = Math.min(1, Math.hypot(fighter.vx, fighter.vz) / characters[fighter.kind].speed);
   const swing = fighter.attackPose > 0 ? Math.sin((fighter.attackPose / 0.55) * Math.PI) : 0;
@@ -3995,6 +4035,52 @@ function updateFighter(fighter, index, delta, elapsed) {
     + swing * fighter.facing * 0.18 + pose * fighter.facing * 0.22;
   animateBlink(fighter.visual, elapsed);
   fighter.visual.visible = fighter.invulnerable <= 0 || Math.floor(elapsed * 12) % 2 === 0;
+}
+
+// Remote fighters are driven by snapshots from the opponent's client; their owner decides hits, knockouts, and stocks.
+function updateRemoteFighter(fighter, delta, elapsed) {
+  const snapshot = fighter.remoteTarget;
+  if (!snapshot) return;
+  const follow = 1 - Math.exp(-16 * delta);
+  fighter.x += (snapshot.x - fighter.x) * follow;
+  fighter.y += (snapshot.y - fighter.y) * follow;
+  fighter.z += (snapshot.z - fighter.z) * follow;
+  Object.assign(fighter, {
+    vx: snapshot.vx, vy: snapshot.vy, vz: snapshot.vz, facing: snapshot.facing,
+    grounded: snapshot.grounded, crouching: snapshot.crouching, hp: snapshot.hp, damage: snapshot.damage,
+    stocks: snapshot.stocks, invulnerable: snapshot.invulnerable, respawn: snapshot.respawn,
+    attackPose: snapshot.attackPose, kickPose: snapshot.kickPose, poseTimer: snapshot.poseTimer,
+    hitFlash: snapshot.hitFlash, powerBoost: snapshot.powerBoost
+  });
+  if (snapshot.falling && !fighter.falling) {
+    fighter.falling = true;
+    fighter.knockoutElapsed = 0;
+    fighter.knockoutEffect = createKnockoutBlackHole(fighter);
+  } else if (!snapshot.falling && fighter.falling) {
+    fighter.falling = false;
+    removeKnockoutBlackHole(fighter);
+  }
+  if (fighter.falling) {
+    fighter.knockoutElapsed += delta;
+    updateKnockoutBlackHole(fighter, delta, THREE.MathUtils.clamp(fighter.knockoutElapsed / 1.35, 0, 1));
+  }
+  if (snapshot.eliminated && !fighter.eliminated) {
+    fighter.eliminated = true;
+    fighter.falling = false;
+    removeKnockoutBlackHole(fighter);
+    fighter.visual.visible = false;
+    hudDirty = true;
+    if (matchActive && !matchEnded) checkLastStanding();
+    return;
+  }
+  fighter.visual.position.set(fighter.x, fighter.y, fighter.z);
+  fighter.visual.rotation.y = fighter.facing > 0 ? Math.PI / 2 : -Math.PI / 2;
+  fighter.visual.scale.copy(fighter.visual.userData.baseScale).multiplyScalar(1 + fighter.hitFlash * 0.7);
+  if (fighter.visual.userData.powerAura) {
+    fighter.visual.userData.powerAura.visible = fighter.powerBoost > 0;
+    fighter.visual.userData.powerAura.rotation.z += delta * 1.8;
+  }
+  animateFighterBody(fighter, elapsed);
 }
 
 function updateProjectiles(delta) {
@@ -5088,6 +5174,13 @@ function frame(timestamp = 0) {
     for (let index = 0; index < fighters.length; index += 1) {
       updateFighter(fighters[index], index, delta, elapsed);
     }
+    if (battleMode === "online" && fighters[0]) {
+      onlineSendTimer -= delta;
+      if (onlineSendTimer <= 0) {
+        onlineSendTimer = 0.1;
+        sendOnlineState({ snapshot: onlineSnapshot(fighters[0]) });
+      }
+    }
     if (portalIntroActive && fighters.every((fighter) => fighter.portalEntry === 0)) {
       portalIntroActive = false;
       document.querySelector("#battle-status").textContent = "FIGHT!";
@@ -5401,16 +5494,30 @@ document.querySelector("#enter-portal").addEventListener("click", () => {
   startMusic().catch(handleMusicError);
 });
 document.querySelector("#back-to-portal").addEventListener("click", showPortal);
-document.querySelector("#start-match").addEventListener("click", () => startMatch());
+document.querySelector("#start-match").addEventListener("click", () => {
+  if (battleMode === "online") {
+    beginOnlineSearch();
+    return;
+  }
+  startMatch();
+});
 document.querySelector("#leave-battle").addEventListener("click", showSelection);
-document.querySelector("#rematch").addEventListener("click", () => startMatch(secretChallengeActive ? "entity" : null));
+document.querySelector("#rematch").addEventListener("click", () => {
+  if (battleMode === "online") {
+    showSelection();
+    beginOnlineSearch();
+    return;
+  }
+  startMatch(secretChallengeActive ? "entity" : null);
+});
 document.querySelector("#return-to-select").addEventListener("click", showSelection);
 document.querySelector("#return-through-portal").addEventListener("click", showSelection);
 const battleModeCycle = [
   { id: "explore", label: "Adventure: Entity.exe hunt", short: "ADVENTURE" },
   { id: "cpu", label: "Solo vs. 5 CPUs", short: "SOLO VS CPUS" },
   { id: "local", label: "Local 4-player", short: "LOCAL 4-PLAYER" },
-  { id: "split", label: "Split-screen 1v1", short: "SPLIT-SCREEN 1V1" }
+  { id: "split", label: "Split-screen 1v1", short: "SPLIT-SCREEN 1V1" },
+  { id: "online", label: "Online 1v1 matchmaking", short: "ONLINE 1V1" }
 ];
 function cycleBattleMode() {
   const currentIndex = battleModeCycle.findIndex((mode) => mode.id === battleMode);
@@ -5424,6 +5531,100 @@ function syncBattleModeUi() {
 }
 document.querySelector("#toggle-mode").addEventListener("click", cycleBattleMode);
 syncBattleModeUi();
+
+function onlineSnapshot(fighter) {
+  return {
+    kind: fighter.kind, x: fighter.x, y: fighter.y, z: fighter.z,
+    vx: fighter.vx, vy: fighter.vy, vz: fighter.vz, facing: fighter.facing,
+    grounded: fighter.grounded, crouching: fighter.crouching, hp: fighter.hp, damage: fighter.damage,
+    stocks: fighter.stocks, invulnerable: fighter.invulnerable, respawn: fighter.respawn,
+    attackPose: fighter.attackPose, kickPose: fighter.kickPose, poseTimer: fighter.poseTimer,
+    hitFlash: fighter.hitFlash, powerBoost: fighter.powerBoost,
+    falling: fighter.falling, eliminated: fighter.eliminated
+  };
+}
+
+function applyOnlineSkin(fighter, skinId) {
+  const skin = skinById(skinId);
+  if (!skin.tint) return;
+  fighter.visual.traverse((child) => {
+    if (!child.isMesh || !child.material || !child.material.color) return;
+    child.material = child.material.clone();
+    child.material.color.lerp(new THREE.Color(skin.tint), 0.45);
+    if (child.material.emissive) child.material.emissive.set(skin.emissive);
+  });
+}
+
+function beginOnlineSearch() {
+  if (!isSignedIn()) {
+    openAccountFor("Sign up or log in to host or join an online match.");
+    return;
+  }
+  hostOrJoinMatch(selectedFighter);
+}
+
+function fighterBySlot(slot) {
+  return fighters.find((fighter) => fighter.remote && fighter.remoteSlot === slot) || null;
+}
+
+function checkLastStanding() {
+  if (!matchActive || matchEnded) return;
+  const standing = fighters.filter((fighter) => !fighter.eliminated);
+  if (standing.length === 0) finishMatch(null, "Everyone was knocked out.");
+  else if (standing.length === 1) finishMatch(fighters.indexOf(standing[0]), "Last fighter standing.");
+}
+
+setOnlineListeners({
+  onAccountChanged(account) {
+    if (account) adminAuthorized = true;
+  },
+  getFighterKind: () => selectedFighter,
+  onMatchStart(message) {
+    const { slot, arenaSeed, players } = message;
+    if (Number.isFinite(arenaSeed) && !hiddenRealmActive) {
+      arenaIndex = Math.floor(arenaSeed * arenaCount) % arenaCount;
+      createArena(arenaIndex);
+      updateArenaLabel();
+    }
+    onlineRemotes = players
+      .filter((player) => player.slot !== slot)
+      .sort((a, b) => a.slot - b.slot);
+    battleMode = "online";
+    syncBattleModeUi();
+    startMatch();
+    if (fighters[0]) applyOnlineSkin(fighters[0], currentSkinId());
+  },
+  onState(message) {
+    const remote = fighterBySlot(message.slot);
+    if (remote && message.snapshot) {
+      remote.remoteTarget = message.snapshot;
+      hudDirty = true;
+    }
+  },
+  onHit(message) {
+    if (!matchActive || matchEnded) return;
+    const attacker = fighterBySlot(message.from) || fighters[0];
+    hitTarget(attacker, fighters[0], message.damage, message.force);
+  },
+  onPlayerLeft(message) {
+    const remote = fighterBySlot(message.slot);
+    if (!remote || remote.eliminated || !matchActive || matchEnded) return;
+    remote.eliminated = true;
+    remote.falling = false;
+    removeKnockoutBlackHole(remote);
+    remote.visual.visible = false;
+    hudDirty = true;
+    checkLastStanding();
+  },
+  onDisconnected() {
+    if (matchActive && !matchEnded) finishMatch(null, "Connection to the server was lost.");
+  },
+  onResultSaved(result) {
+    document.querySelector("#match-end-status").textContent = `Online record: ${result.wins} wins, ${result.matches} matches`;
+  }
+});
+initOnlineUi();
+restoreSession();
 
 document.querySelector("#resolution-select").addEventListener("change", (event) => {
   setRenderQuality(Number(event.target.value), renderQuality.fps);

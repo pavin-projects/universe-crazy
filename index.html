@@ -255,6 +255,69 @@
         </div>
       </div>
 
+      <button class="account-open-button" id="open-account" type="button" aria-label="Sign up or log in">👤</button>
+      <section class="account-modal" id="account-modal" hidden aria-labelledby="account-title">
+        <div class="account-card">
+          <div class="screen-topline">
+            <span class="eyebrow">ONLINE ACCOUNT</span>
+            <button class="text-button" id="close-account" type="button">✕ Close</button>
+          </div>
+          <h2 id="account-title">Online Play</h2>
+          <div id="account-signed-out">
+            <div class="auth-tabs">
+              <button class="secondary-button" id="auth-tab-login" type="button">Log in</button>
+              <button class="secondary-button" id="auth-tab-signup" type="button">Sign up</button>
+            </div>
+            <form class="auth-form" id="login-form" autocomplete="on">
+              <div class="auth-field" id="login-user-row">
+                <label for="login-username">Username</label>
+                <input id="login-username" type="text" autocomplete="username" maxlength="16">
+              </div>
+              <div class="auth-field">
+                <label for="login-password">Password</label>
+                <input id="login-password" type="password" autocomplete="current-password" required>
+              </div>
+              <button class="primary-button" type="submit">Log in</button>
+            </form>
+            <form class="auth-form" id="signup-form" autocomplete="off" hidden>
+              <div class="auth-field">
+                <label for="signup-username">Username (3–16 letters, digits or _)</label>
+                <input id="signup-username" type="text" autocomplete="username" maxlength="16" required>
+              </div>
+              <div class="auth-field">
+                <label for="signup-password">Password (8+ characters)</label>
+                <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
+              </div>
+              <div class="auth-field">
+                <label for="signup-confirm">Type password again</label>
+                <input id="signup-confirm" type="password" autocomplete="new-password" minlength="8" required>
+              </div>
+              <button class="primary-button" type="submit">Create account</button>
+            </form>
+          </div>
+          <div id="account-signed-in" hidden>
+            <p class="account-welcome" id="account-welcome"></p>
+            <p class="account-record" id="account-record"></p>
+            <label class="auth-field">
+              <span>Online skin</span>
+              <select id="skin-select" aria-label="Online skin"></select>
+            </label>
+            <button class="secondary-button" id="logout-button" type="button">Log out</button>
+          </div>
+          <p class="admin-status" id="account-status" role="status"></p>
+        </div>
+      </section>
+      <section class="lobby-notice" id="lobby-notice" hidden aria-live="polite">
+        <div class="lobby-notice-card">
+          <span class="eyebrow">ONLINE LOBBY</span>
+          <p class="lobby-text" id="lobby-text"></p>
+          <div class="lobby-actions">
+            <button class="primary-button" id="lobby-join" type="button" hidden>Join</button>
+            <button class="secondary-button" id="lobby-leave" type="button" hidden>Leave</button>
+          </div>
+        </div>
+      </section>
+
       <button class="admin-open-button" id="open-admin" type="button" aria-label="Open admin panel">⚙</button>
       <section class="admin-modal" id="admin-modal" hidden aria-labelledby="admin-title">
         <div class="admin-card">
