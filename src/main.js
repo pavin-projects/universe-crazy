@@ -4403,6 +4403,33 @@ function createLabelSprite(text, color) {
   return sprite;
 }
 
+const RIVAL_COUNT = 6;
+const RIVAL_MAX_HP = 3;
+const RIVAL_BOLT_COLOR = "#ff9a3c";
+
+// Rival ships reuse the fighter palettes, so every spaceship in the sky looks like a different fighter
+function createRivals(group) {
+  const paletteNames = Object.keys(characters);
+  return Array.from({ length: RIVAL_COUNT }, (_, index) => {
+    const palette = characters[paletteNames[index % paletteNames.length]].palette;
+    const mesh = new THREE.Group();
+    mesh.add(buildSpaceshipVisual({ body: palette.primary, trim: palette.trim, dark: palette.dark }, 1.1));
+    mesh.visible = false;
+    group.add(mesh);
+    return {
+      mesh,
+      position: new THREE.Vector3(),
+      velocity: new THREE.Vector3(),
+      color: palette.trim,
+      hp: RIVAL_MAX_HP,
+      alive: false,
+      respawn: index * 0.8,
+      fireTimer: 1 + Math.random() * 1.5,
+      seed: Math.random() * 10
+    };
+  });
+}
+
 function createExploreWorld() {
   const group = new THREE.Group();
   scene.add(group);
@@ -4492,6 +4519,8 @@ function createExploreWorld() {
     battles.push({ left, right, spark, center: pair.position.clone(), phase: index * 1.7, calm: 0 });
   }
 
+  const rivals = createRivals(group);
+
   const entityMesh = new THREE.Group();
   entityMesh.position.copy(EXPLORE_ENTITY_BASE);
   group.add(entityMesh);
@@ -4526,6 +4555,11 @@ function createExploreWorld() {
     boltGeometry: new THREE.SphereGeometry(0.35, 8, 6),
     playerBoltMat: new THREE.MeshBasicMaterial({ color: "#4ce9ff" }),
     entityBoltMat: new THREE.MeshBasicMaterial({ color: "#ff4fd8" }),
+    rivalBoltMat: new THREE.MeshBasicMaterial({ color: RIVAL_BOLT_COLOR }),
+    blastGeometry: new THREE.SphereGeometry(1, 12, 10),
+    blasts: [],
+    rivals,
+    kills: 0,
     entityMesh,
     entityAnchor: EXPLORE_ENTITY_BASE.clone(),
     entityHp: EXPLORE_ENTITY_MAX_HP,
@@ -4578,6 +4612,8 @@ function disposeExploreWorld(world) {
   world.boltGeometry.dispose();
   world.playerBoltMat.dispose();
   world.entityBoltMat.dispose();
+  world.rivalBoltMat.dispose();
+  world.blastGeometry.dispose();
   world.sparkMat.dispose();
   arena.visible = world.arenaWasVisible;
   camera.up.set(0, 1, 0);
@@ -4649,19 +4685,21 @@ function endExplore(won) {
   document.querySelector("#match-end-status").textContent = "EXPLORE COMPLETE";
   document.querySelector("#winner-title").textContent = won ? "ENTITY.EXE DELETED" : "ENTITY.EXE WINS";
   document.querySelector("#winner-message").textContent = won
-    ? "You climbed the platform course through the galaxy and deleted Entity.exe."
-    : "Your ship was deleted. Climb back up the course and try again.";
+    ? `You deleted Entity.exe after ${Math.floor(explore.time)}s and ${explore.kills} rival kills.`
+    : `Your ship was destroyed after ${Math.floor(explore.time)}s with ${explore.kills} rival kills. Try again and survive longer.`;
   document.querySelector("#touch-controls").hidden = true;
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#match-end").hidden = false;
   document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
 }
 
-function spawnExploreBolt(world, origin, direction, owner) {
-  const mesh = new THREE.Mesh(world.boltGeometry, owner === "player" ? world.playerBoltMat : world.entityBoltMat);
+function spawnExploreBolt(world, origin, direction, owner, shooter = null) {
+  const material = owner === "player" ? world.playerBoltMat : owner === "rival" ? world.rivalBoltMat : world.entityBoltMat;
+  const speed = owner === "player" ? 60 : owner === "rival" ? 30 : 24;
+  const mesh = new THREE.Mesh(world.boltGeometry, material);
   mesh.position.copy(origin);
   world.group.add(mesh);
-  world.bolts.push({ mesh, velocity: direction.clone().multiplyScalar(owner === "player" ? 60 : 24), life: 2.2, owner });
+  world.bolts.push({ mesh, velocity: direction.clone().multiplyScalar(speed), life: 2.2, owner, shooter });
 }
 
 function resolveExplorePlanets(world) {
@@ -4732,6 +4770,13 @@ function drawExploreMinimap(world) {
   world.items.forEach((item) => {
     if (item.taken) return;
     const [x, y] = toMap(item.base.x, item.base.z);
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  });
+
+  ctx.fillStyle = RIVAL_BOLT_COLOR;
+  world.rivals.forEach((rival) => {
+    if (!rival.alive) return;
+    const [x, y] = toMap(rival.position.x, rival.position.z);
     ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
   });
 
@@ -4821,18 +4866,127 @@ function updateExploreBolts(world, delta) {
         remove = true;
       }
     }
+    if (!remove) {
+      const hitRival = world.rivals.find((rival) => rival.alive && rival !== bolt.shooter && bolt.mesh.position.distanceTo(rival.position) < 2.4);
+      if (hitRival) {
+        damageRival(world, hitRival, 1, bolt.owner === "player");
+        remove = true;
+      }
+    }
     if (bolt.owner === "player" && bolt.mesh.position.distanceTo(world.entityMesh.position) < 3) {
       world.entityHp = Math.max(0, world.entityHp - 4);
       world.glitch = 0.15;
       remove = true;
-    } else if (bolt.owner === "entity" && bolt.mesh.position.distanceTo(world.position) < 1.3 && world.hurtTimer <= 0) {
-      world.hull = Math.max(0, world.hull - 6);
+    } else if (bolt.owner !== "player" && bolt.mesh.position.distanceTo(world.position) < 1.3 && world.hurtTimer <= 0) {
+      world.hull = Math.max(0, world.hull - (bolt.owner === "entity" ? 6 : 5));
       world.hurtTimer = 0.4;
       remove = true;
     }
     if (remove) {
       world.group.remove(bolt.mesh);
       world.bolts.splice(index, 1);
+    }
+  }
+}
+
+function spawnRival(world, rival) {
+  const angle = Math.random() * Math.PI * 2;
+  const distance = 60 + Math.random() * 30;
+  rival.position.set(
+    world.position.x + Math.cos(angle) * distance,
+    THREE.MathUtils.clamp(world.position.y + (Math.random() - 0.5) * 30, -40, 110),
+    world.position.z + Math.sin(angle) * distance
+  );
+  rival.velocity.set(Math.random() - 0.5, 0, Math.random() - 0.5).multiplyScalar(10);
+  rival.hp = RIVAL_MAX_HP;
+  rival.alive = true;
+  rival.mesh.visible = true;
+  rival.fireTimer = 1 + Math.random() * 1.5;
+}
+
+function spawnBlast(world, position, color, size = 3) {
+  const material = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false });
+  const mesh = new THREE.Mesh(world.blastGeometry, material);
+  mesh.position.copy(position);
+  world.group.add(mesh);
+  world.blasts.push({ mesh, life: 0.9, total: 0.9, size });
+}
+
+function damageRival(world, rival, amount, byPlayer) {
+  rival.hp -= amount;
+  if (rival.hp > 0) return;
+  rival.alive = false;
+  rival.mesh.visible = false;
+  rival.respawn = 5 + Math.random() * 2;
+  spawnBlast(world, rival.position, rival.color);
+  if (byPlayer) world.kills += 1;
+}
+
+function updateRivals(world, delta) {
+  for (const rival of world.rivals) {
+    if (!rival.alive) {
+      rival.respawn -= delta;
+      if (rival.respawn <= 0) spawnRival(world, rival);
+      continue;
+    }
+
+    // Chase the nearest enemy, which may be the player or another rival
+    let target = world.position;
+    let best = rival.position.distanceTo(world.position);
+    for (const other of world.rivals) {
+      if (other === rival || !other.alive) continue;
+      const distance = rival.position.distanceTo(other.position);
+      if (distance < best) {
+        best = distance;
+        target = other.position;
+      }
+    }
+    if (best > 200) {
+      rival.alive = false;
+      rival.mesh.visible = false;
+      rival.respawn = 0.5;
+      continue;
+    }
+
+    const toTarget = target.clone().sub(rival.position);
+    const distance = toTarget.length();
+    const dir = distance > 0.001 ? toTarget.divideScalar(distance) : new THREE.Vector3(0, 0, 1);
+    const side = new THREE.Vector3(-dir.z, 0, dir.x);
+    const approach = distance > 24 ? 1 : distance < 12 ? -0.6 : 0.3;
+    const desired = dir.clone().multiplyScalar(14 * approach).addScaledVector(side, Math.sin(world.time * 0.9 + rival.seed) * 9);
+    desired.y += Math.sin(world.time * 0.6 + rival.seed * 2) * 3;
+    rival.velocity.lerp(desired, 1 - Math.exp(-1.6 * delta));
+    rival.position.addScaledVector(rival.velocity, delta);
+    rival.mesh.position.copy(rival.position);
+    if (rival.velocity.lengthSq() > 0.01) rival.mesh.lookAt(rival.position.clone().add(rival.velocity));
+
+    rival.fireTimer -= delta;
+    if (rival.fireTimer <= 0) {
+      rival.fireTimer = 1.4 + Math.random() * 1.2;
+      const aimed = rival.velocity.lengthSq() > 0.01 && rival.velocity.clone().normalize().dot(dir) > 0.3;
+      if (aimed && distance < 60) spawnExploreBolt(world, rival.position, dir, "rival", rival);
+    }
+
+    // Flying into a ship destroys the rival and damages the player
+    if (world.position.distanceTo(rival.position) < 2.6) {
+      damageRival(world, rival, RIVAL_MAX_HP, true);
+      world.hull = Math.max(0, world.hull - 12);
+      world.hurtTimer = 0.4;
+    }
+  }
+}
+
+function updateExploreBlasts(world, delta) {
+  for (let index = world.blasts.length - 1; index >= 0; index -= 1) {
+    const blast = world.blasts[index];
+    blast.life -= delta;
+    const progress = 1 - Math.max(0, blast.life) / blast.total;
+    blast.mesh.scale.setScalar(blast.size * (0.3 + progress * 1.2));
+    blast.mesh.material.opacity = Math.max(0, blast.life / blast.total) * 0.9;
+    if (blast.life <= 0) {
+      world.group.remove(blast.mesh);
+      blast.mesh.material.dispose();
+      world.blasts.splice(index, 1);
     }
   }
 }
@@ -4880,6 +5034,8 @@ function updateExplore(delta) {
 
   updateExploreEntity(world, delta);
   updateExploreBolts(world, delta);
+  updateRivals(world, delta);
+  updateExploreBlasts(world, delta);
   updateExploreBattles(world, delta);
   updateExploreItems(world, delta);
   updateExploreObstacles(world, delta);
@@ -4902,7 +5058,8 @@ function updateExplore(delta) {
   camera.position.copy(world.camPos);
   camera.lookAt(world.position.clone().addScaledVector(world.forward, 4).addScaledVector(world.up, 1));
 
-  const status = `ENTITY.EXE ${Math.ceil(world.entityHp)}/${EXPLORE_ENTITY_MAX_HP} · HULL ${Math.ceil(world.hull)}% · ITEMS ${world.itemsFound}/${EXPLORE_ITEM_COUNT}`;
+  const rivalsAlive = world.rivals.filter((rival) => rival.alive).length;
+  const status = `ENTITY.EXE ${Math.ceil(world.entityHp)}/${EXPLORE_ENTITY_MAX_HP} · HULL ${Math.ceil(world.hull)}% · ITEMS ${world.itemsFound}/${EXPLORE_ITEM_COUNT} · RIVALS ${rivalsAlive} · KILLS ${world.kills} · SURVIVED ${Math.floor(world.time)}s`;
   drawExploreMinimap(world);
   if (status !== world.status) {
     world.status = status;
