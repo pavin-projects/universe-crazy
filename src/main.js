@@ -4760,6 +4760,7 @@ function createExploreWorld() {
     const pos = getGalaxyBattlePlatformPosition(arenaIdx);
     const platform = addMesh(group, platformGeometry, platformMat, [pos.x, pos.y, pos.z]);
     platform.scale.set(1.2, 1, 1.2);
+    platform.visible = false;
     battlePlatforms.push({ mesh: platform, arenaIndex: arenaIdx, center: new THREE.Vector3(pos.x, pos.y, pos.z), radius: 2.5 });
   }
 
@@ -5359,12 +5360,7 @@ function enterBattleFromExploration(arenaIdx) {
   arenaIndex = arenaIdx;
   createArena(arenaIndex);
   
-  beginMatch({
-    fighters: [{ kind: "Bumble Boy", player: true }],
-    rivals: [{ kind: "Robot Boy", player: false }],
-    mode: "single",
-    cpus: 1
-  });
+  startMatch();
   
   titleScreenActive = false;
   clearExplore();
