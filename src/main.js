@@ -410,6 +410,7 @@ const streamedDecor = [];
 const ARENA_STREAM_RANGE = 70;
 const arenaSurfaces = [];
 const arenaPlanets = [];
+const galaxyBattlePlatforms = {};
 let portalDisc;
 let portalRings = [];
 let fighterPreview = null;
@@ -1550,6 +1551,23 @@ function seededRandom(seed) {
   };
 }
 
+function getGalaxyBattlePlatformPosition(arenaIndex) {
+  if (galaxyBattlePlatforms[arenaIndex]) {
+    return galaxyBattlePlatforms[arenaIndex];
+  }
+  const rng = seededRandom(arenaIndex);
+  const angle = rng() * Math.PI * 2;
+  const distance = 85 + rng() * 240;
+  const height = rng() * 120 - 60;
+  const position = {
+    x: Math.cos(angle) * distance,
+    y: height,
+    z: Math.sin(angle) * distance
+  };
+  galaxyBattlePlatforms[arenaIndex] = position;
+  return position;
+}
+
 function createStars() {
   const vertices = [];
   for (let i = 0; i < 360; i += 1) {
@@ -1908,6 +1926,10 @@ function createArena(index = arenaIndex) {
   const stone = material(theme.stone, 0.72, 0.18);
   const floor = material(theme.floor, 0.52, 0.24);
   const trim = material(theme.trim, 0.3, 0.46, { emissive: theme.trim, emissiveIntensity: 0.48 });
+  
+  const platformPosition = getGalaxyBattlePlatformPosition(index);
+  arena.position.set(platformPosition.x, platformPosition.y, platformPosition.z);
+  
   const realmDiscGeometry = new THREE.CylinderGeometry(1, 1, 0.6, 40);
   const realmCoreGeometry = new THREE.SphereGeometry(1, 20, 14);
   for (let index = 0; index < 7; index += 1) {
@@ -1925,15 +1947,19 @@ function createArena(index = arenaIndex) {
   const planetDepthVariants = [0.38, 0.56, 0.25, 0.42, 0.62, 0.28, 0.48, 0.24, 0.58, 0.34];
   floorRadius = radiusVariants[layout % radiusVariants.length] * 1.25 + random() * 0.4;
   const planetDepth = floorRadius * planetDepthVariants[layout % planetDepthVariants.length];
+  const platformScale = 0.65;
+  floorRadius *= platformScale;
+  const scaledPlatformSize = new THREE.Vector3(platformScale, 1, platformScale);
+  
   const planetCore = addMesh(
     arena,
     new THREE.SphereGeometry(1, 36, 22),
     stone,
-    [0, -planetDepth, 0],
-    [floorRadius + 0.15, planetDepth, floorRadius + 0.15]
+    [0, -planetDepth * platformScale, 0],
+    [floorRadius + 0.15, planetDepth * platformScale * 0.6, floorRadius + 0.15]
   );
   planetCore.rotation.y = random() * Math.PI * 2;
-  const platform = addMesh(arena, new THREE.CylinderGeometry(floorRadius + 0.55, floorRadius - 0.35, 0.75, 48), stone, [0, -0.35, 0]);
+  const platform = addMesh(arena, new THREE.CylinderGeometry((floorRadius + 0.55) * platformScale, (floorRadius - 0.35) * platformScale, 0.5, 48), stone, [0, -0.25, 0]);
   platform.receiveShadow = true;
   addMesh(arena, new THREE.CircleGeometry(floorRadius, 48), floor, [0, 0.035, 0]).rotation.x = -Math.PI / 2;
   const planetBand = addMesh(arena, new THREE.TorusGeometry(floorRadius * 0.88, 0.085, 8, 72), trim, [0, -planetDepth * 0.58, 0]);
@@ -4509,6 +4535,8 @@ function animatePortal(elapsed, delta) {
   const onMenuScreen = titleScreenActive || selectionScreenActive;
   spaceBattle.visible = onMenuScreen;
   titlePlanets.visible = onMenuScreen;
+  starField.visible = explore && !onMenuScreen;
+  galaxyBackdrop.visible = explore && !onMenuScreen;
   if (titlePlanets.visible) {
     titlePlanets.children.forEach((planet) => {
       const { basePosition, phase } = planet.userData;
@@ -4723,6 +4751,16 @@ function createExploreWorld() {
     items.push({ mesh, base: position, taken: false });
   }
 
+  const battlePlatforms = [];
+  const platformMat = material("#4ce9ff", 0.4, 0.2, { emissive: "#4ce9ff", emissiveIntensity: 0.8 });
+  const platformGeometry = new THREE.BoxGeometry(3.5, 0.3, 3.5);
+  for (let arenaIdx = 0; arenaIdx < 20; arenaIdx += 1) {
+    const pos = getGalaxyBattlePlatformPosition(arenaIdx);
+    const platform = addMesh(group, platformGeometry, platformMat, [pos.x, pos.y, pos.z]);
+    platform.scale.set(1.2, 1, 1.2);
+    battlePlatforms.push({ mesh: platform, arenaIndex: arenaIdx, center: new THREE.Vector3(pos.x, pos.y, pos.z), radius: 2.5 });
+  }
+
   const battleMats = [
     material("#72e0a2", 0.5, 0.1),
     material("#ffd166", 0.5, 0.1),
@@ -4734,6 +4772,25 @@ function createExploreWorld() {
   const battleHead = new THREE.SphereGeometry(0.4, 8, 6);
   const battleLimb = new THREE.BoxGeometry(0.22, 0.8, 0.22);
   const battleSpark = new THREE.OctahedronGeometry(0.65, 0);
+  
+  const observerShips = [];
+  const buildObserverShip = (pos) => {
+    const ship = new THREE.Group();
+    ship.position.copy(pos);
+    ship.position.y += 3;
+    const fuselage = addMesh(ship, new THREE.BoxGeometry(0.4, 0.3, 1.2), material("#888899", 0.3, 0.2), [0, 0, 0]);
+    const wing1 = addMesh(ship, new THREE.BoxGeometry(1.2, 0.08, 0.3), material("#666677", 0.3, 0.2), [-0.6, 0, 0]);
+    const wing2 = addMesh(ship, new THREE.BoxGeometry(1.2, 0.08, 0.3), material("#666677", 0.3, 0.2), [0.6, 0, 0]);
+    const cockpit = addMesh(ship, new THREE.SphereGeometry(0.15, 4, 4), material("#4ce9ff", 0.5, 0.3, { emissive: "#4ce9ff", emissiveIntensity: 0.4 }), [0, 0.1, 0.4]);
+    group.add(ship);
+    return ship;
+  };
+  
+  for (let arenaIdx = 0; arenaIdx < 20; arenaIdx += 1) {
+    const pos = getGalaxyBattlePlatformPosition(arenaIdx);
+    observerShips.push(buildObserverShip(pos));
+  }
+  
   const buildDistantFighter = (color, x) => {
     const fighter = new THREE.Group();
     fighter.position.x = x;
@@ -4792,6 +4849,8 @@ function createExploreWorld() {
     battles,
     obstacles,
     gates,
+    battlePlatforms,
+    observerShips,
     sparkMat,
     bolts: [],
     boltGeometry: new THREE.SphereGeometry(0.35, 8, 6),
@@ -4931,6 +4990,16 @@ function collectExploreItems(world) {
     item.mesh.visible = false;
     world.itemsFound += 1;
     world.hull = Math.min(100, world.hull + 10);
+  });
+}
+
+function updateExploreObserverShips(world, delta) {
+  if (!world.observerShips) return;
+  
+  world.observerShips.forEach((ship, idx) => {
+    const time = world.time * 0.3 + idx;
+    ship.rotation.y += delta * 0.2;
+    ship.position.y += Math.sin(time * 1.5) * delta * 0.5;
   });
 }
 
@@ -5259,10 +5328,44 @@ function updateExploreBlasts(world, delta) {
     blast.mesh.material.opacity = Math.max(0, blast.life / blast.total) * 0.9;
     if (blast.life <= 0) {
       world.group.remove(blast.mesh);
-      blast.mesh.material.dispose();
       world.blasts.splice(index, 1);
     }
   }
+}
+
+function checkBattlePlatformEntry(world) {
+  if (!world.battlePlatforms) return;
+  
+  for (const platform of world.battlePlatforms) {
+    const dist = world.position.distanceTo(platform.center);
+    if (dist < platform.radius + 1.5) {
+      enterBattleFromExploration(platform.arenaIndex);
+      break;
+    }
+  }
+}
+
+function enterBattleFromExploration(arenaIdx) {
+  if (!explore || explore.over) return;
+  
+  explore.over = true;
+  clearInputState();
+  document.querySelector("#touch-controls").hidden = true;
+  document.querySelector("#explore-minimap").hidden = true;
+  
+  titleScreenActive = true;
+  arenaIndex = arenaIdx;
+  createArena(arenaIndex);
+  
+  beginMatch({
+    fighters: [{ kind: "Bumble Boy", player: true }],
+    rivals: [{ kind: "Robot Boy", player: false }],
+    mode: "single",
+    cpus: 1
+  });
+  
+  titleScreenActive = false;
+  clearExplore();
 }
 
 function updateExplore(delta) {
@@ -5317,7 +5420,9 @@ function updateExplore(delta) {
   updateExploreBlasts(world, delta);
   updateExploreBattles(world, delta);
   updateExploreItems(world, delta);
+  updateExploreObserverShips(world, delta);
   collectExploreItems(world);
+  checkBattlePlatformEntry(world);
   world.hurtTimer = Math.max(0, world.hurtTimer - delta);
   if (world.position.distanceTo(world.entityMesh.position) < 3.6) {
     world.hull = Math.max(0, world.hull - 20 * delta);
