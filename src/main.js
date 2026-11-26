@@ -1913,7 +1913,7 @@ function createArena(index = arenaIndex) {
   arenaSurfaces.length = 0;
   hitEffects.length = 0;
   cameraShake = 0;
-  arena.visible = !titleScreenActive;
+  arena.visible = true;
 
   const theme = hiddenRealmActive ? secretTheme : arenaThemes[Math.floor(index / 20) % arenaThemes.length];
   const layout = hiddenRealmActive ? 0 : index % 20;
@@ -2951,6 +2951,7 @@ function showSelection() {
   clearInputState();
   restoreFromSecretRealm();
   if (enteringFromTitle) createArena(arenaIndex);
+  arena.position.set(0, 0, 0);
   matchActive = false;
   document.querySelector("#battle-hud").hidden = true;
   document.querySelector("#match-end").hidden = true;
@@ -4405,12 +4406,13 @@ function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ, cam = 
   const dz = baseZ - focusZ;
   const cos = Math.cos(cameraOrbit.yaw);
   const sin = Math.sin(cameraOrbit.yaw);
+  const arenaPos = arena.position;
   cam.position.set(
-    focusX + (dx * cos - dz * sin) * cameraOrbit.zoom,
-    baseY,
-    focusZ + (dx * sin + dz * cos) * cameraOrbit.zoom
+    arenaPos.x + focusX + (dx * cos - dz * sin) * cameraOrbit.zoom,
+    arenaPos.y + baseY,
+    arenaPos.z + focusZ + (dx * sin + dz * cos) * cameraOrbit.zoom
   );
-  cam.lookAt(focusX, lookY, focusZ);
+  cam.lookAt(arenaPos.x + focusX, arenaPos.y + lookY, arenaPos.z + focusZ);
 }
 
 // Split-screen player 2 gets its own rig and camera; player 1 keeps the main camera
@@ -4533,8 +4535,8 @@ function animatePortal(elapsed, delta) {
   galaxyBackdrop.children[0].material.opacity = 0.62 + Math.sin(elapsed * 1.1) * 0.12;
   animateSpaceBattle(elapsed);
   const onMenuScreen = titleScreenActive || selectionScreenActive;
-  spaceBattle.visible = onMenuScreen;
-  titlePlanets.visible = onMenuScreen;
+  spaceBattle.visible = false;
+  titlePlanets.visible = false;
   starField.visible = explore && !onMenuScreen;
   galaxyBackdrop.visible = explore && !onMenuScreen;
   if (titlePlanets.visible) {
