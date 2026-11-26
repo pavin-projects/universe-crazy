@@ -1,8 +1,9 @@
 import * as THREE from "three";
-import { setOnlineListeners, initOnlineUi, restoreSession, isSignedIn, currentAccount, currentSkinId, hostOrJoinMatch, leaveMatch, sendOnlineState, sendOnlineHit, reportOnlineResult, openAccountFor } from "./online.js";
+import { setOnlineListeners, initOnlineUi, restoreSession, isSignedIn, currentAccount, currentSkinId, hostOrJoinMatch, leaveMatch, sendOnlineState, sendOnlineHit, sendOnlineProjectile, reportOnlineResult, openAccountFor } from "./online.js";
 import { skinById } from "../shared/skins.js";
 import { swordForWins } from "../shared/swords.js";
-import { segmentHitsSphere } from "./collision.js";
+import { segmentSphereHitTime, segmentCrossesGate } from "./collision.js";
+import { readFlightInput } from "./flight.js";
 
 let onlineSendTimer = 0;
 let onlineRemotes = [];
@@ -1524,11 +1525,21 @@ function updateArenaStreaming() {
 }
 
 function disposeObject(object) {
+  const geometries = new Set();
+  const materials = new Set();
+  const textures = new Set();
   object.traverse((child) => {
-    if (child.geometry) child.geometry.dispose();
-    if (Array.isArray(child.material)) child.material.forEach((item) => item.dispose());
-    else if (child.material) child.material.dispose();
+    if (child.geometry && !child.isSprite) geometries.add(child.geometry);
+    const childMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const item of childMaterials) {
+      if (!item) continue;
+      materials.add(item);
+      if (item.map) textures.add(item.map);
+    }
   });
+  textures.forEach((texture) => texture.dispose());
+  materials.forEach((item) => item.dispose());
+  geometries.forEach((geometry) => geometry.dispose());
 }
 
 function seededRandom(seed) {
@@ -2491,7 +2502,6 @@ function createSpeechBubble(fighter, text) {
     fighter.visual.remove(fighter.speechBubble);
     fighter.speechBubble.material.map.dispose();
     fighter.speechBubble.material.dispose();
-    fighter.speechBubble.geometry.dispose();
   }
   const bubbleCanvas = document.createElement("canvas");
   bubbleCanvas.width = 768;
@@ -2542,7 +2552,6 @@ function updateSpeechBubble(fighter, delta, elapsed) {
     fighter.visual.remove(fighter.speechBubble);
     fighter.speechBubble.material.map.dispose();
     fighter.speechBubble.material.dispose();
-    fighter.speechBubble.geometry.dispose();
     fighter.speechBubble = null;
     return;
   }
@@ -2707,8 +2716,9 @@ function updateHud() {
     hpFill.style.backgroundColor = hp > 55 ? "#72e0a2" : hp > 25 ? "#ffd166" : "#ff7189";
     hpMeter.setAttribute("aria-valuenow", String(hp));
     hpMeter.setAttribute("aria-label", `${characters[fighter.kind].name} health`);
-    document.querySelector(selectors.stocks).textContent = `${"● ".repeat(fighter.stocks)}${"○ ".repeat(maxStocks - fighter.stocks)}`.trim();
-    document.querySelector(selectors.stocks).setAttribute("aria-label", `${fighter.stocks} stocks remaining`);
+    const stocks = THREE.MathUtils.clamp(fighter.stocks, 0, maxStocks);
+    document.querySelector(selectors.stocks).textContent = `${"● ".repeat(stocks)}${"○ ".repeat(maxStocks - stocks)}`.trim();
+    document.querySelector(selectors.stocks).setAttribute("aria-label", `${stocks} stocks remaining`);
   });
   hudDirty = false;
 }
@@ -2729,7 +2739,7 @@ function updateControlsHint() {
     return `P${index + 1} ${characters[kind].specialName} (${specialKeys[index]})`;
   }).join(" · ");
   const controls = battleMode === "explore"
-    ? "Flight: A/D or ←/→ turn · Q/E strafe · W/↑ thrust · S/↓ reverse · R/F pitch · Space rise · C descend · Shift boost · J fire · Alt+A/D orbit camera · Alt+W/S zoom · find Entity.exe on the minimap"
+    ? "Flight: A/D or ←/→ turn · Q/E strafe · W/↑ thrust · S/↓ reverse · R/F pitch · Space rise · C descend · Shift or K boost · J fire · Alt+A/D orbit camera · Alt+W/S zoom · Touch: joystick to turn/thrust, buttons to rise, fire, boost or descend · find Entity.exe on the minimap"
     : battleMode === "split"
       ? "Split-screen 1v1: P1 WASD move · Space jump · J fight · K special | P2 Arrows move · Right Ctrl jump · Enter fight · Right Shift special"
       : battleMode === "cpu"
@@ -2737,6 +2747,20 @@ function updateControlsHint() {
         : `Local 4-player: P1 WASD/J · P2 Arrows/Enter · P3 TFGH/Y · P4 Numpad · Crouch: C / R-Ctrl / B / Num3 · Specials: ${localSpecials}`;
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
+}
+
+function setExploreTouchControls(active) {
+  const labels = [
+    ["Space", "ASCEND", "Ascend", "JUMP", "Jump"],
+    ["KeyJ", "FIRE", "Fire", "FIGHT", "Fight / strike"],
+    ["KeyK", "BOOST", "Boost", "SPECIAL", "Special attack"],
+    ["KeyC", "DESCEND", "Descend", "CROUCH", "Crouch"]
+  ];
+  for (const [key, exploreLabel, exploreAria, battleLabel, battleAria] of labels) {
+    const button = document.querySelector(`.touch-controls button[data-key="${key}"]`);
+    button.textContent = active ? exploreLabel : battleLabel;
+    button.setAttribute("aria-label", active ? exploreAria : battleAria);
+  }
 }
 
 function clearInputState() {
@@ -2829,6 +2853,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   camera.lookAt(0, 3.6, -4.2);
   portalIntroActive = true;
   matchTime = 180;
+  document.querySelector("#match-clock").textContent = "3:00";
   specialCameraFocus = null;
   displayedSecond = -1;
   matchActive = true;
@@ -2842,6 +2867,9 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
   document.querySelector("#touch-controls").hidden = false;
+  document.querySelector("#battle-hud").classList.remove("explore-hud");
+  setExploreTouchControls(false);
+  updateArenaLabel();
   document.querySelector(".battle-hud").classList.toggle("six-fighter-hud", fighters.length > 4);
   for (let index = 1; index < 6; index += 1) {
     const slot = ["one", "two", "three", "four", "five", "six"][index];
@@ -2850,6 +2878,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
       remotes[index - 1] ? remotes[index - 1].username : battleMode === "cpu" ? `CPU ${index}` : `PLAYER ${index + 1}`;
   }
   document.querySelector("#battle-status").textContent = "PORTAL ARRIVAL!";
+  document.querySelector("#special-status").hidden = false;
   updateControlsHint();
   updateHud();
   document.querySelector("#screen-reader-status").textContent =
@@ -2968,23 +2997,7 @@ function finishMatch(winnerIndex, reason) {
   document.querySelector("#screen-reader-status").textContent = document.querySelector("#winner-message").textContent;
 }
 
-function launchProjectile(fighter, options = {}) {
-  const {
-    color = "#ffe36f",
-    emissive = "#ff9d35",
-    radius = 0.27,
-    speed = 13,
-    life = 1.5,
-    damage = 9,
-    force = 4.2,
-    vy = null,
-    vz = 0,
-    offsetZ = 0,
-    shape = "sphere",
-    hazard = false,
-    boomerang = false,
-    homing = false
-  } = options;
+function createProjectileVisual({ color, emissive, radius, shape, hazard }, position) {
   const geometry = shape === "star"
     ? new THREE.OctahedronGeometry(radius, 1)
     : shape === "wave"
@@ -2992,10 +3005,9 @@ function launchProjectile(fighter, options = {}) {
       : shape === "banana"
         ? new THREE.TorusGeometry(radius * 1.05, radius * 0.32, 8, 16, Math.PI * 1.15)
         : new THREE.SphereGeometry(radius, 16, 12);
-  const startY = hazard ? fighter.y + 0.85 : fighter.y + 1.35;
   const projectile = addMesh(arena, geometry, new THREE.MeshStandardMaterial({
     color, emissive, emissiveIntensity: hazard ? 0.55 : 2.3, roughness: 0.2
-  }), [fighter.x + fighter.facing * 0.8, startY, fighter.z + offsetZ]);
+  }), position);
   if (!hazard) {
     const halo = addMesh(projectile, new THREE.TorusGeometry(radius * 1.45, 0.025, 8, 24), new THREE.MeshBasicMaterial({ color }), [0, 0, 0]);
     halo.rotation.x = Math.PI / 2;
@@ -3003,12 +3015,25 @@ function launchProjectile(fighter, options = {}) {
     projectile.rotation.x = Math.PI / 2;
   }
   projectile.userData.spin = 4;
+  return projectile;
+}
+
+function launchProjectile(fighter, options = {}) {
+  const {
+    color = "#ffe36f", emissive = "#ff9d35", radius = 0.27, speed = 13,
+    life = 1.5, damage = 9, force = 4.2, vy = null, vz = 0, offsetZ = 0,
+    shape = "sphere", hazard = false, boomerang = false, homing = false
+  } = options;
+  const startY = hazard ? fighter.y + 0.85 : fighter.y + 1.35;
+  const projectile = createProjectileVisual({ color, emissive, radius, shape, hazard },
+    [fighter.x + fighter.facing * 0.8, startY, fighter.z + offsetZ]);
+  const velocityY = vy !== null ? vy : (hazard ? 4.2 : 0);
   projectiles.push({
     mesh: projectile,
     owner: fighter,
     speed,
     vx: fighter.facing * speed,
-    vy: vy !== null ? vy : (hazard ? 4.2 : 0),
+    vy: velocityY,
     vz,
     life,
     damage,
@@ -3019,6 +3044,21 @@ function launchProjectile(fighter, options = {}) {
     homing,
     armTimer: hazard ? 0.45 : 0,
     power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
+  });
+  if (battleMode === "online" && !fighter.remote) {
+    sendOnlineProjectile({
+      x: projectile.position.x, y: projectile.position.y, z: projectile.position.z,
+      vx: fighter.facing * speed, vy: velocityY, vz, speed, life, radius, shape, color, emissive, hazard, boomerang, homing
+    });
+  }
+}
+
+function spawnRemoteProjectile(fighter, data) {
+  const mesh = createProjectileVisual(data, [data.x, data.y, data.z]);
+  projectiles.push({
+    mesh, owner: fighter, vx: data.vx, vy: data.vy, vz: data.vz, speed: data.speed, life: data.life,
+    hazard: data.hazard, boomerang: data.boomerang, homing: data.homing,
+    armTimer: 0, visualOnly: true
   });
 }
 
@@ -3048,7 +3088,7 @@ function applyAreaAbility(fighter, { radius, damage, force, color, pull = false 
     const dx = target.x - fighter.x;
     const dz = target.z - fighter.z;
     if (Math.hypot(dx, dz) > radius || Math.abs(target.y - fighter.y) > 2.2) continue;
-    hitTarget(fighter, target, damage * characters[fighter.kind].power * boost, force);
+    if (!hitTarget(fighter, target, damage * characters[fighter.kind].power * boost, force) || target.remote) continue;
     const toward = pull ? -1 : 1;
     target.vx += Math.sign(dx || fighter.facing) * force * 0.45 * toward;
     target.vz += Math.sign(dz || 1) * force * 0.35 * toward;
@@ -3100,7 +3140,7 @@ function spawnFireBreath(fighter) {
     const dx = target.x - fighter.x;
     const distance = dx * sign;
     const width = 0.55 + Math.max(0, distance) * 0.3;
-    if (distance <= 0.35 || distance > 4.5 || Math.abs(target.z - fighter.z) > width) continue;
+    if (distance <= 0.35 || distance > 4.5 || Math.abs(target.z - fighter.z) > width || Math.abs(target.y - fighter.y) > 1.8 * FIGHTER_SCALE) continue;
     hitTarget(fighter, target, 11 * characters[fighter.kind].power * boost, 5.8);
   }
 }
@@ -3542,14 +3582,14 @@ function showKnockoutFlash(fighter) {
 }
 
 function hitTarget(attacker, target, damage, force) {
-  if (target.eliminated || target.respawn > 0 || target.invulnerable > 0) return;
+  if (target.eliminated || target.portalEntry > 0 || target.respawn > 0 || target.invulnerable > 0) return false;
   if (target.remote) {
     // The opponent's client owns that fighter's HP and knockback, so relay the hit and only show the impact here
     sendOnlineHit(target.remoteSlot, damage, force);
     target.hitFlash = 0.24;
     spawnImpact(target, damage >= 10);
     document.querySelector("#battle-status").textContent = `${characters[attacker.kind].name} landed a hit!`;
-    return;
+    return true;
   }
   if (battleMode === "cpu" && target === fighters[0] && fighters.indexOf(attacker) > 0) {
     damage *= cpuLevelFor(attacker).damage;
@@ -3574,6 +3614,7 @@ function hitTarget(attacker, target, damage, force) {
   hudDirty = true;
   document.querySelector("#battle-status").textContent = `${characters[attacker.kind].name} landed a hit!`;
   if (target.hp <= 0) beginKnockout(target, "was knocked out at 0 HP!");
+  return true;
 }
 
 function beginKnockout(fighter, reason) {
@@ -3665,6 +3706,9 @@ function respawn(fighter, index) {
     fighter.eliminated = true;
     fighter.falling = false;
     fighter.visual.visible = false;
+    if (battleMode === "online" && fighter === fighters[0]) {
+      sendOnlineState({ snapshot: onlineSnapshot(fighter) });
+    }
     const remaining = fighters.map((item, fighterIndex) => ({ item, fighterIndex })).filter(({ item }) => !item.eliminated);
     hudDirty = true;
     if (remaining.length === 1) {
@@ -3885,7 +3929,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  if (fighter.slipTimer <= 0) readInput(fighter, index, delta);
+  if (!portalIntroActive && fighter.slipTimer <= 0) readInput(fighter, index, delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -4153,8 +4197,8 @@ function updateProjectiles(delta) {
         projectile.mesh.position.x += projectile.vx * delta;
       }
       projectile.mesh.rotation.z += delta * 2.2;
-      for (const target of fighters) {
-        if (target.eliminated || target.respawn > 0) continue;
+      for (const target of projectile.visualOnly ? [] : fighters) {
+        if (target.eliminated || target.portalEntry > 0 || target.respawn > 0 || target.invulnerable > 0) continue;
         if (target === projectile.owner && projectile.armTimer > 0) continue;
         const dx = projectile.mesh.position.x - target.x;
         const dy = projectile.mesh.position.y - (target.y + 0.3);
@@ -4171,6 +4215,7 @@ function updateProjectiles(delta) {
             hudDirty = true;
             spawnImpact(target, false);
             document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on his own banana peel!`;
+            if (target.hp <= 0) beginKnockout(target, "was knocked out at 0 HP!");
           } else {
             hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
             document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on a banana peel!`;
@@ -4207,14 +4252,20 @@ function updateProjectiles(delta) {
       if (hitWall || projectile.mesh.position.y <= 0.1) {
         projectile.life = 0;
       }
-      for (const target of hitWall || projectile.mesh.position.y <= 0.1 ? [] : fighters) {
+      let closestTarget = null;
+      let closestTime = Infinity;
+      for (const target of projectile.visualOnly || hitWall || projectile.mesh.position.y <= 0.1 ? [] : fighters) {
         if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
         collisionCenter.set(target.x, target.y + 1.3 * FIGHTER_SCALE, target.z);
-        if (segmentHitsSphere(projectileStart, projectile.mesh.position, collisionCenter, projectile.hitRadius)) {
-          hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
-          projectile.life = 0;
-          break;
+        const time = segmentSphereHitTime(projectileStart, projectile.mesh.position, collisionCenter, projectile.hitRadius);
+        if (time !== null && time < closestTime) {
+          closestTime = time;
+          closestTarget = target;
         }
+      }
+      if (closestTarget) {
+        hitTarget(projectile.owner, closestTarget, projectile.damage * projectile.power, projectile.force);
+        projectile.life = 0;
       }
     }
     if (projectile.life <= 0 || Math.hypot(projectile.mesh.position.x, projectile.mesh.position.z) > floorRadius + 10) {
@@ -4572,8 +4623,16 @@ function createExploreWorld() {
   const palette = characters[selectedFighter].palette;
   ship.add(buildSpaceshipVisual({ body: palette.primary, trim: palette.trim, dark: palette.dark }, 1));
   const thruster = addMesh(ship, new THREE.SphereGeometry(0.32, 10, 8), material("#4ce9ff", 0.2, 0, { emissive: "#4ce9ff", emissiveIntensity: 1.6 }), [0, 0, -1.9]);
+  const exhaust = addMesh(ship, new THREE.ConeGeometry(0.3, 3, 8), new THREE.MeshBasicMaterial({
+    color: "#4ce9ff", transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending
+  }), [0, 0, -3.4]);
+  exhaust.rotation.x = -Math.PI / 2;
 
   const planetPalette = ["#ff8fb1", "#7fd8ff", "#ffd166", "#b8a2ff", "#72e0a2"];
+  const atmosphereGeometry = new THREE.SphereGeometry(1, 16, 12);
+  const atmospheres = planetPalette.map((color) => new THREE.MeshBasicMaterial({
+    color, side: THREE.BackSide, transparent: true, opacity: 0.13, depthWrite: false
+  }));
   const planets = [];
   for (let index = 0; index < 14; index += 1) {
     const radius = index === 0 ? 6 : 3.4 + (index % 3) * 1.1;
@@ -4584,6 +4643,9 @@ function createExploreWorld() {
       : new THREE.Vector3(Math.cos(angle) * ring, 4 + index * 5.4, Math.sin(angle) * ring);
     const color = planetPalette[index % planetPalette.length];
     const planetMesh = addMesh(group, new THREE.SphereGeometry(radius, 20, 14), material(color, 0.65, 0.1, { emissive: color, emissiveIntensity: 0.1 }), center.toArray());
+    if (index % 2 === 0) {
+      addMesh(planetMesh, atmosphereGeometry, atmospheres[index % atmospheres.length], [0, 0, 0], [radius * 1.12, radius * 1.12, radius * 1.12]);
+    }
     if (index % 2 === 0) {
       addMesh(planetMesh, new THREE.TorusGeometry(radius * 1.6, 0.16, 6, 36), material("#fff1c9", 0.4, 0.2), [0, 0, 0]).rotation.x = 1.1;
     }
@@ -4617,7 +4679,7 @@ function createExploreWorld() {
     if (index % 2 === 0) {
       const gate = addMesh(group, new THREE.TorusGeometry(3.2, 0.25, 8, 28), gateMat, mid.clone().sub(side.clone().multiplyScalar(0.4)).toArray());
       gate.lookAt(to);
-      gates.push({ mesh: gate, center: gate.position.clone(), passed: false });
+      gates.push({ mesh: gate, center: gate.position.clone(), normal: to.clone().sub(gate.position).normalize(), passed: false });
     }
   }
 
@@ -4692,7 +4754,9 @@ function createExploreWorld() {
     group,
     ship,
     thruster,
+    exhaust,
     position: planets[0].center.clone().add(new THREE.Vector3(0, planets[0].radius + 1.4, 0)),
+    previousPosition: new THREE.Vector3(),
     velocity: new THREE.Vector3(),
     forward: new THREE.Vector3(0, 0, -1),
     up: new THREE.Vector3(0, 1, 0),
@@ -4740,6 +4804,10 @@ function startExplore() {
   clearFighters();
   explore = createExploreWorld();
   explore.arenaWasVisible = arena.visible;
+  explore.backgroundColor = scene.background.clone();
+  explore.fogColor = scene.fog.color.clone();
+  scene.background.set("#02030a");
+  scene.fog.color.copy(scene.background);
   arena.visible = false;
   matchActive = false;
   document.querySelector("#portal-screen").hidden = true;
@@ -4748,12 +4816,15 @@ function startExplore() {
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
+  document.querySelector("#battle-hud").classList.add("explore-hud");
   document.querySelector("#touch-controls").hidden = false;
+  setExploreTouchControls(true);
   document.querySelectorAll('[id^="player-"][id$="-panel"]').forEach((panel) => {
     panel.hidden = true;
   });
   document.querySelector("#battle-arena-name").textContent = "GALAXY EXPLORE";
   document.querySelector("#match-clock").textContent = "∞";
+  document.querySelector("#special-status").hidden = true;
   document.querySelector("#explore-minimap").hidden = false;
   updateControlsHint();
   renderer.domElement.focus();
@@ -4776,6 +4847,8 @@ function disposeExploreWorld(world) {
   world.blastGeometry.dispose();
   world.sparkMat.dispose();
   arena.visible = world.arenaWasVisible;
+  scene.background.copy(world.backgroundColor);
+  scene.fog.color.copy(world.fogColor);
   starField.position.set(0, 0, 0);
   galaxyBackdrop.position.set(-3, 10, -43);
   camera.up.set(0, 1, 0);
@@ -4809,7 +4882,7 @@ function updateExploreObstacles(world, delta) {
     const offset = world.position.clone().sub(rock.mesh.position);
     const distance = offset.length();
     if (distance < rock.radius + 1 && world.hurtTimer <= 0) {
-      const normal = offset.normalize();
+      const normal = distance > 0.001 ? offset.normalize() : new THREE.Vector3(0, 1, 0);
       world.position.copy(rock.mesh.position).addScaledVector(normal, rock.radius + 1.1);
       world.velocity.reflect(normal).multiplyScalar(0.5);
       world.hull = Math.max(0, world.hull - 8);
@@ -4817,7 +4890,7 @@ function updateExploreObstacles(world, delta) {
     }
   });
   world.gates.forEach((gate) => {
-    if (gate.passed || world.position.distanceTo(gate.center) > 3.2) return;
+    if (gate.passed || !segmentCrossesGate(world.previousPosition, world.position, gate.center, gate.normal, 2)) return;
     gate.passed = true;
     gate.mesh.scale.setScalar(1.25);
     world.hull = Math.min(100, world.hull + 6);
@@ -5028,29 +5101,41 @@ function updateExploreBolts(world, delta) {
     bolt.mesh.position.addScaledVector(bolt.velocity, delta);
     bolt.life -= delta;
     let remove = bolt.life <= 0;
-    if (bolt.owner === "player") {
-      const battle = world.battles.find((item) => segmentHitsSphere(projectileStart, bolt.mesh.position, item.center, 4));
-      if (battle) {
-        battle.calm = 6;
-        world.hull = Math.min(100, world.hull + 4);
-        remove = true;
-      }
-    }
     if (!remove) {
-      const hitRival = world.rivals.find((rival) => rival.alive && rival !== bolt.shooter && segmentHitsSphere(projectileStart, bolt.mesh.position, rival.position, 2.4));
-      if (hitRival) {
-        damageRival(world, hitRival, 1, bolt.owner === "player");
+      let closest = null;
+      let closestTime = Infinity;
+      const consider = (type, object, center, radius) => {
+        const time = segmentSphereHitTime(projectileStart, bolt.mesh.position, center, radius);
+        if (time !== null && time < closestTime) {
+          closestTime = time;
+          closest = { type, object };
+        }
+      };
+      for (const planet of world.planets) consider("planet", planet, planet.center, planet.radius + 0.35);
+      if (bolt.owner === "player") {
+        for (const battle of world.battles) consider("battle", battle, battle.center, 4);
+        consider("entity", world.entityMesh, world.entityMesh.position, 3);
+      } else if (world.hurtTimer <= 0) {
+        consider("player", world.ship, world.position, 1.3);
+      }
+      for (const rival of world.rivals) {
+        if (rival.alive && rival !== bolt.shooter) consider("rival", rival, rival.position, 2.4);
+      }
+      if (closest) {
+        if (closest.type === "battle") {
+          if (closest.object.calm <= 0) world.hull = Math.min(100, world.hull + 4);
+          closest.object.calm = 6;
+        } else if (closest.type === "rival") {
+          damageRival(world, closest.object, 1, bolt.owner === "player");
+        } else if (closest.type === "entity") {
+          world.entityHp = Math.max(0, world.entityHp - 4);
+          world.glitch = 0.15;
+        } else if (closest.type === "player") {
+          world.hull = Math.max(0, world.hull - (bolt.owner === "entity" ? 6 : 5));
+          world.hurtTimer = 0.4;
+        }
         remove = true;
       }
-    }
-    if (!remove && bolt.owner === "player" && segmentHitsSphere(projectileStart, bolt.mesh.position, world.entityMesh.position, 3)) {
-      world.entityHp = Math.max(0, world.entityHp - 4);
-      world.glitch = 0.15;
-      remove = true;
-    } else if (!remove && bolt.owner !== "player" && segmentHitsSphere(projectileStart, bolt.mesh.position, world.position, 1.3) && world.hurtTimer <= 0) {
-      world.hull = Math.max(0, world.hull - (bolt.owner === "entity" ? 6 : 5));
-      world.hurtTimer = 0.4;
-      remove = true;
     }
     if (remove) {
       world.group.remove(bolt.mesh);
@@ -5165,29 +5250,30 @@ function updateExplore(delta) {
   const world = explore;
   world.time += delta;
 
-  const turn = (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) - (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
+  const input = readFlightInput(keys, virtualKeys);
+  const turn = input.turn;
   world.turnRate = THREE.MathUtils.lerp(world.turnRate, turn * 2.2, 1 - Math.exp(-8 * delta));
   world.yaw += world.turnRate * delta;
   world.bank = THREE.MathUtils.lerp(world.bank, turn * 0.5, 1 - Math.exp(-6 * delta));
 
-  const pitchInput = (keys.has("KeyR") ? 1 : 0) - (keys.has("KeyF") ? 1 : 0);
+  const pitchInput = input.pitch;
   world.pitch = THREE.MathUtils.clamp(world.pitch + pitchInput * delta * 1.2, -1.2, 1.2);
   const cosPitch = Math.cos(world.pitch);
   world.forward.set(-Math.sin(world.yaw) * cosPitch, Math.sin(world.pitch), -Math.cos(world.yaw) * cosPitch);
   const right = world.forward.clone().cross(world.up).normalize();
 
-  const boost = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 1.9 : 1;
-  const forwardInput = (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) - (keys.has("KeyS") || keys.has("ArrowDown") ? 0.5 : 0);
-  const strafe = (keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0);
-  const rise = (keys.has("Space") ? 1 : 0) - (keys.has("KeyC") || keys.has("ControlRight") ? 1 : 0);
+  const boost = input.boosting ? 1.9 : 1;
+  const forwardInput = input.forward;
   const speed = 18 * boost;
   const target = world.forward.clone().multiplyScalar(forwardInput * speed);
-  target.addScaledVector(right, strafe * speed * 0.6);
-  target.y += rise * speed * 0.6;
+  target.addScaledVector(right, input.strafe * speed * 0.6);
+  target.y += input.rise * speed * 0.6;
   world.velocity.lerp(target, 1 - Math.exp(-2.5 * delta));
+  world.previousPosition.copy(world.position);
   world.position.addScaledVector(world.velocity, delta);
   resolveExploreBounds(world);
   resolveExplorePlanets(world);
+  updateExploreObstacles(world, delta);
 
   world.ship.position.copy(world.position);
   starField.position.copy(world.position);
@@ -5196,9 +5282,11 @@ function updateExplore(delta) {
   world.ship.rotateZ(world.bank);
   const flare = forwardInput > 0 ? (boost > 1 ? 2.6 : 1.4) : 0.6;
   world.thruster.scale.set(1, 1, flare + Math.sin(world.time * 24) * 0.15);
+  world.exhaust.scale.y = forwardInput > 0 ? (boost > 1 ? 1.6 : 1) : 0.25;
+  world.exhaust.material.opacity = forwardInput > 0 ? 0.45 : 0.18;
 
   world.fireCooldown = Math.max(0, world.fireCooldown - delta);
-  if (keys.has("KeyJ") && world.fireCooldown <= 0) {
+  if (input.firing && world.fireCooldown <= 0) {
     world.fireCooldown = 0.22;
     const nose = world.position.clone().addScaledVector(world.forward, 1.6);
     spawnExploreBolt(world, nose, world.forward, "player");
@@ -5210,7 +5298,6 @@ function updateExplore(delta) {
   updateExploreBlasts(world, delta);
   updateExploreBattles(world, delta);
   updateExploreItems(world, delta);
-  updateExploreObstacles(world, delta);
   collectExploreItems(world);
   world.hurtTimer = Math.max(0, world.hurtTimer - delta);
   if (world.position.distanceTo(world.entityMesh.position) < 3.6) {
@@ -5259,7 +5346,7 @@ function frame(timestamp = 0) {
   animatePortal(elapsed, delta);
   updateCameraOrbit(delta);
   if (explore) {
-    if (!explore.over) updateExplore(delta);
+    if (!explore.over && !graphicsContextLost) updateExplore(delta);
   } else if (matchActive) {
     if (!portalIntroActive) updateClock(delta);
     for (let index = 0; index < fighters.length; index += 1) {
@@ -5272,7 +5359,7 @@ function frame(timestamp = 0) {
         sendOnlineState({ snapshot: onlineSnapshot(fighters[0]) });
       }
     }
-    if (portalIntroActive && fighters.every((fighter) => fighter.portalEntry === 0)) {
+    if (portalIntroActive && fighters.every((fighter) => fighter.eliminated || fighter.portalEntry === 0)) {
       portalIntroActive = false;
       document.querySelector("#battle-status").textContent = "FIGHT!";
       document.querySelector("#screen-reader-status").textContent = "All fighters have entered the arena. Fight!";
@@ -5287,6 +5374,14 @@ function frame(timestamp = 0) {
       updateCamera(delta);
     }
     if (hudDirty) updateHud();
+    if (fighters[0]) {
+      const cooldown = fighters[0].specialCooldown;
+      const status = cooldown > 0
+        ? `${characters[fighters[0].kind].specialName}: ${cooldown.toFixed(1)}s`
+        : `${characters[fighters[0].kind].specialName}: READY`;
+      const specialStatus = document.querySelector("#special-status");
+      if (specialStatus.textContent !== status) specialStatus.textContent = status;
+    }
   } else if (fighters.length === 0) {
     // On the select screen the camera drifts toward the cursor but always aims at the fighter
     const menuX = selectionScreenActive ? menuPointer.x * 2.5 : 0;
@@ -5673,6 +5768,7 @@ setOnlineListeners({
   onMatchStart(message) {
     const { slot, arenaSeed, players } = message;
     onlineSlot = slot;
+    clearExplore();
     if (Number.isFinite(arenaSeed) && !hiddenRealmActive) {
       arenaIndex = Math.floor(arenaSeed * arenaCount) % arenaCount;
       createArena(arenaIndex);
@@ -5701,6 +5797,10 @@ setOnlineListeners({
     const attacker = fighterBySlot(message.from) || fighters[0];
     hitTarget(attacker, fighters[0], message.damage, message.force);
   },
+  onProjectile(message) {
+    const remote = fighterBySlot(message.slot);
+    if (remote && matchActive && !matchEnded) spawnRemoteProjectile(remote, message.projectile);
+  },
   onPlayerLeft(slot) {
     const remote = fighterBySlot(slot);
     if (!remote || remote.eliminated || !matchActive || matchEnded) return;
@@ -5713,6 +5813,10 @@ setOnlineListeners({
   },
   onDisconnected() {
     if (matchActive && !matchEnded) finishMatch(null, "Connection to the server was lost.");
+  },
+  onProtocolError(error) {
+    document.querySelector("#battle-status").textContent = error;
+    document.querySelector("#screen-reader-status").textContent = error;
   },
   onResultSaved(result) {
     document.querySelector("#match-end-status").textContent = `Online record: ${result.wins} wins, ${result.matches} matches`;

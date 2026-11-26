@@ -22,7 +22,7 @@ npm run preview
 
 For online play, use the Vite development server: it hosts the account API and WebSocket lobby on the same port. Sign in, choose the online mode, and host or join using the small corner indicator. The host can start with two to six players; a full six-player lobby starts automatically. The lobby stays open until it starts or the host leaves. Other players must be able to reach the server; the static GitHub Pages build does not provide the online server.
 
-Run the lobby integration test with `node --test tests\lobby.test.js`.
+Run the focused tests with `node --test tests\collision.test.js tests\flight.test.js tests\lobby.test.js`.
 
 ## Controls
 
@@ -34,7 +34,7 @@ Local four-player mode runs at half speed. Player 1 uses `A`/`D` and `W`/`S`, `S
 
 Press **START** to open fighter selection, then press **FIGHT!** to begin. Use the previous/next or Random controls to choose an arena. The 200 numbered layouts are generated deterministically, so each selection is repeatable.
 
-Adventure mode lets you fly through a larger galaxy, watch battles on planets, and track nearby objects and Entity.exe on the ship-centered minimap.
+Adventure mode lets you fly through a larger galaxy, watch battles on planets, and track nearby objects and Entity.exe on the ship-centered minimap. Drag the touch joystick to turn and thrust; the touch buttons ascend, fire, boost, and descend. On the keyboard, Shift or K boosts. Projectiles collide with planets and the first target they reach.
 
 Choose **FULL SCREEN** on the title screen to hide browser chrome while playing. Full screen may be blocked when the game is embedded; open it in its own tab instead.
 

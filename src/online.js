@@ -10,8 +10,10 @@ const listeners = {
   onMatchStart: () => {},
   onState: () => {},
   onHit: () => {},
+  onProjectile: () => {},
   onPlayerLeft: () => {},
   onDisconnected: () => {},
+  onProtocolError: () => {},
   onResultSaved: () => {}
 };
 
@@ -126,6 +128,8 @@ function connectSocket() {
     if (inMatch) {
       inMatch = false;
       listeners.onDisconnected();
+    } else if (account) {
+      showNotice("Connection lost. Choose online play to reconnect.", NOTICE_HOLD_MS);
     }
   });
 }
@@ -148,7 +152,10 @@ function showNotice(text, holdMs = 0) {
 
 function handleMessage(message) {
   if (message.type === "lobby") {
-    lobby = { host: message.host, players: message.players, max: message.max };
+    lobby = {
+      host: message.host, players: message.players, max: message.max,
+      isHost: message.isHost, isJoined: message.isJoined
+    };
     clearTimeout(noticeTimer);
     noticeText = "";
     renderLobby();
@@ -175,8 +182,12 @@ function handleMessage(message) {
     listeners.onState(message);
   } else if (message.type === "hit") {
     listeners.onHit(message);
+  } else if (message.type === "projectile") {
+    listeners.onProjectile(message);
   } else if (message.type === "player_left") {
     listeners.onPlayerLeft(message.slot);
+  } else if (message.type === "protocol_error") {
+    listeners.onProtocolError(message.error);
   } else if (message.type === "result_saved") {
     if (account) account = { ...account, wins: message.wins, matches: message.matches };
     renderAccount();
@@ -188,6 +199,7 @@ function handleMessage(message) {
 export function hostOrJoinMatch(kind) {
   if (!account) return false;
   if (!socket || socket.readyState !== WebSocket.OPEN) connectSocket();
+  if (socket.readyState !== WebSocket.OPEN) showNotice("Connecting to the online lobby…");
   const type = lobby ? "join" : "host";
   const sendRequest = () => send({ type, kind });
   if (socket.readyState === WebSocket.OPEN) sendRequest();
@@ -220,6 +232,10 @@ export function sendOnlineHit(target, damage, force) {
   send({ type: "hit", target, damage, force });
 }
 
+export function sendOnlineProjectile(projectile) {
+  send({ type: "projectile", projectile });
+}
+
 export function reportOnlineResult(won) {
   send({ type: "result", won });
 }
@@ -237,8 +253,8 @@ function renderLobby() {
     return;
   }
   const count = lobby.players.length;
-  const hosting = lobby.host === account.username;
-  const joined = lobby.players.includes(account.username);
+  const hosting = lobby.isHost;
+  const joined = lobby.isJoined;
   els.lobbyText.textContent = noticeText || (hosting
     ? `Hosting · ${count}/${lobby.max} players`
     : `${lobby.host}'s lobby · ${count}/${lobby.max} players`);

@@ -125,17 +125,21 @@ function broadcast(message) {
   for (const ws of sockets) send(ws, message);
 }
 
-function lobbyState() {
+function lobbyState(ws) {
   return {
     type: "lobby",
     host: lobby.host.username,
     players: lobby.members.map((ws) => ws.username),
-    max: LOBBY_MAX_PLAYERS
+    max: LOBBY_MAX_PLAYERS,
+    isHost: lobby.host === ws,
+    isJoined: lobby.members.includes(ws)
   };
 }
 
 function broadcastLobby() {
-  if (lobby) broadcast(lobbyState());
+  if (lobby) {
+    for (const ws of sockets) send(ws, lobbyState(ws));
+  }
 }
 
 function closeLobby(reason) {
@@ -213,6 +217,35 @@ function describe(ws) {
   return { slot: ws.slot, username: ws.username, kind: ws.kind, skin: account ? account.skin : "none" };
 }
 
+function validSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return false;
+  const numbers = ["x", "y", "z", "vx", "vy", "vz", "facing", "hp", "damage", "stocks",
+    "invulnerable", "respawn", "attackPose", "kickPose", "poseTimer", "hitFlash", "powerBoost"];
+  const flags = ["grounded", "crouching", "falling", "eliminated"];
+  return numbers.every((key) => Number.isFinite(snapshot[key]))
+    && flags.every((key) => typeof snapshot[key] === "boolean")
+    && (snapshot.facing === 1 || snapshot.facing === -1)
+    && snapshot.hp >= 0 && snapshot.hp <= 100
+    && snapshot.damage >= 0
+    && Number.isInteger(snapshot.stocks) && snapshot.stocks >= 0 && snapshot.stocks <= 4;
+}
+
+function validProjectile(projectile) {
+  if (!projectile || typeof projectile !== "object" || Array.isArray(projectile)) return false;
+  const coordinates = ["x", "y", "z"];
+  const velocities = ["vx", "vy", "vz"];
+  return coordinates.every((key) => Number.isFinite(projectile[key]) && Math.abs(projectile[key]) <= 1000)
+    && velocities.every((key) => Number.isFinite(projectile[key]) && Math.abs(projectile[key]) <= 100)
+    && Number.isFinite(projectile.speed) && projectile.speed >= 0 && projectile.speed <= 100
+    && Number.isFinite(projectile.life) && projectile.life > 0 && projectile.life <= 7
+    && Number.isFinite(projectile.radius) && projectile.radius > 0 && projectile.radius <= 2
+    && ["sphere", "star", "wave", "banana"].includes(projectile.shape)
+    && typeof projectile.color === "string" && /^#[0-9a-f]{6}$/i.test(projectile.color)
+    && typeof projectile.emissive === "string" && /^#[0-9a-f]{6}$/i.test(projectile.emissive)
+    && typeof projectile.hazard === "boolean" && typeof projectile.boomerang === "boolean"
+    && typeof projectile.homing === "boolean";
+}
+
 
 function handleSocketMessage(ws, raw) {
   let message;
@@ -269,11 +302,27 @@ function handleSocketMessage(ws, raw) {
   }
 
   if (message.type === "state") {
-    if (!message.snapshot || typeof message.snapshot !== "object") return;
     const room = rooms.get(ws.roomId);
     if (!room) return;
+    if (!validSnapshot(message.snapshot)) {
+      send(ws, { type: "protocol_error", error: "Invalid fighter state was not sent." });
+      return;
+    }
     for (const other of room.players.values()) {
       if (other !== ws) send(other, { type: "state", slot: ws.slot, snapshot: message.snapshot });
+    }
+    return;
+  }
+
+  if (message.type === "projectile") {
+    const room = rooms.get(ws.roomId);
+    if (!room) return;
+    if (!validProjectile(message.projectile)) {
+      send(ws, { type: "protocol_error", error: "Invalid projectile was not sent." });
+      return;
+    }
+    for (const other of room.players.values()) {
+      if (other !== ws) send(other, { type: "projectile", slot: ws.slot, projectile: message.projectile });
     }
     return;
   }
@@ -330,7 +379,7 @@ export function handleUpgrade(req, socket, head) {
 
 wss.on("connection", (ws) => {
   sockets.add(ws);
-  if (lobby) send(ws, lobbyState());
+  if (lobby) send(ws, lobbyState(ws));
   ws.on("message", (raw) => handleSocketMessage(ws, raw));
   ws.on("close", () => {
     sockets.delete(ws);

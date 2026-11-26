@@ -203,6 +203,7 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
 #player-five-panel { grid-area: p5; }
 #player-six-panel { grid-area: p6; }
 .battle-hud.six-fighter-hud { grid-template-areas: "p1 p2 p3 clock p4 p5 p6"; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px repeat(3, minmax(0, 1fr)); width: min(1320px, calc(100% - 32px)); }
+.battle-hud.explore-hud { grid-template-areas: "clock"; grid-template-columns: minmax(0, 1fr); width: min(560px, calc(100% - 32px)); }
 .battle-hud > .match-clock { grid-area: clock; }
 .hud-player { display: grid; grid-template-columns: 10px minmax(62px,1fr) auto; align-items: center; gap: 8px; min-width: 0; }
 .hud-dot { width: 9px; height: 9px; border-radius: 50%; background: #ffd266; box-shadow: 0 0 11px #ffd266; }
@@ -273,6 +274,9 @@ button:focus-visible { outline: 3px solid var(--gold); outline-offset: 4px; }
   .select-actions .primary-button { width: 100%; }
   .quick-fight-button { margin: 8px 0 0; }
   .battle-hud { grid-template-areas: "p1 p2" "clock clock" "p3 p4"; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 3px 7px; top: 8px; width: calc(100% - 16px); padding: 7px 6px; }
+  .battle-hud.six-fighter-hud { grid-template-areas: "p1 p2 p3" "clock clock clock" "p4 p5 p6"; grid-template-columns: repeat(3, minmax(0, 1fr)); width: calc(100% - 16px); }
+  .battle-hud.explore-hud { grid-template-areas: "clock"; grid-template-columns: minmax(0, 1fr); width: min(400px, calc(100% - 16px)); }
+  .explore-minimap { top: 100px; right: 8px; width: 130px; height: 130px; }
   .hud-player { grid-template-columns: 7px minmax(0,1fr) auto; gap: 4px; }
   .hud-player > div strong { font-size: .69rem; }
   .hud-player small, .match-clock span, .match-clock small { font-size: .46rem; }

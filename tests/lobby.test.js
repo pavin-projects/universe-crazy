@@ -56,6 +56,7 @@ test("lobbies start with two or six players and relay room events", async (t) =>
   }
 
   const clients = [];
+  const tokens = [];
   for (let index = 0; index < 6; index += 1) {
     const response = await fetch(`${base}/api/signup`, {
       method: "POST",
@@ -63,12 +64,22 @@ test("lobbies start with two or six players and relay room events", async (t) =>
       body: JSON.stringify({ username: `player${index}`, password: "test-password" })
     });
     assert.equal(response.status, 201);
-    clients.push(await connect((await response.json()).token));
+    const token = (await response.json()).token;
+    tokens.push(token);
+    clients.push(await connect(token));
   }
   const [host, guest] = clients;
   host.send(null);
   host.send({ type: "host", kind: "bumble" });
-  await host.next("lobby", (message) => message.players.length === 1);
+  const hosted = await host.next("lobby", (message) => message.players.length === 1);
+  assert.equal(hosted.isHost, true);
+  assert.equal(hosted.isJoined, true);
+  const otherTab = await connect(tokens[0]);
+  const otherTabLobby = await otherTab.next("lobby");
+  assert.equal(otherTabLobby.isHost, false);
+  assert.equal(otherTabLobby.isJoined, false);
+  otherTab.send({ type: "join", kind: "bumble" });
+  assert.match((await otherTab.next("lobby_error")).error, /already in the lobby/i);
   host.send({ type: "start_lobby" });
   assert.match((await host.next("lobby_error")).error, /two players/i);
   guest.send({ type: "join", kind: "robot" });
@@ -93,9 +104,27 @@ test("lobbies start with two or six players and relay room events", async (t) =>
   assert.deepEqual(starts.map((message) => message.slot), [0, 1, 2, 3, 4, 5]);
   assert.ok(starts.every((message) => message.players.length === 6 && message.arenaSeed === starts[0].arenaSeed));
   clients[5].send({ type: "state", snapshot: { x: 42 } });
+  assert.match((await clients[5].next("protocol_error")).error, /invalid fighter state/i);
+  const snapshot = {
+    x: 42, y: 1, z: 0, vx: 0, vy: 0, vz: 0, facing: 1,
+    hp: 100, damage: 0, stocks: 3, invulnerable: 0, respawn: 0,
+    attackPose: 0, kickPose: 0, poseTimer: 0, hitFlash: 0, powerBoost: 0,
+    grounded: true, crouching: false, falling: false, eliminated: false
+  };
+  clients[5].send({ type: "state", snapshot });
   const state = await host.next("state");
-  assert.deepEqual(state.snapshot, { x: 42 });
+  assert.deepEqual(state.snapshot, snapshot);
   assert.equal(state.slot, 5);
+  const projectile = {
+    x: 2, y: 1, z: 0, vx: 15, vy: 0, vz: 0, speed: 15, life: 1.5, radius: 0.27,
+    shape: "sphere", color: "#ffe36f", emissive: "#ff9d35", hazard: false, boomerang: false, homing: false
+  };
+  clients[5].send({ type: "projectile", projectile });
+  const shot = await host.next("projectile");
+  assert.equal(shot.slot, 5);
+  assert.deepEqual(shot.projectile, projectile);
+  clients[5].send({ type: "projectile", projectile: { ...projectile, radius: 100 } });
+  assert.match((await clients[5].next("protocol_error")).error, /invalid projectile/i);
   clients[5].send({ type: "leave" });
   assert.equal((await host.next("player_left")).slot, 5);
 });
