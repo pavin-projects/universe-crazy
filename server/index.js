@@ -18,7 +18,7 @@ const MAX_BODY_BYTES = 4096;
 const MAX_KIND_LENGTH = 40;
 
 const LOBBY_MAX_PLAYERS = 6;
-const LOBBY_WINDOW_MS = 35000;
+const LOBBY_MIN_PLAYERS = 2;
 
 const sessions = new Map();
 const sockets = new Set();
@@ -130,8 +130,7 @@ function lobbyState() {
     type: "lobby",
     host: lobby.host.username,
     players: lobby.members.map((ws) => ws.username),
-    max: LOBBY_MAX_PLAYERS,
-    remainingMs: Math.max(0, lobby.expiresAt - Date.now())
+    max: LOBBY_MAX_PLAYERS
   };
 }
 
@@ -141,7 +140,6 @@ function broadcastLobby() {
 
 function closeLobby(reason) {
   if (!lobby) return;
-  clearTimeout(lobby.timer);
   const closed = lobby;
   lobby = null;
   broadcast({ type: "lobby_closed", reason, host: closed.host.username });
@@ -151,15 +149,17 @@ function openLobby(host, kind) {
   host.kind = kind;
   lobby = {
     host,
-    members: [host],
-    expiresAt: Date.now() + LOBBY_WINDOW_MS,
-    timer: setTimeout(() => closeLobby("expired"), LOBBY_WINDOW_MS)
+    members: [host]
   };
   broadcastLobby();
 }
 
 function joinLobby(ws, kind) {
   if (lobby.members.includes(ws)) return;
+  if (lobby.members.some((member) => member.username === ws.username)) {
+    send(ws, { type: "lobby_error", error: "This account is already in the lobby." });
+    return;
+  }
   if (lobby.members.length >= LOBBY_MAX_PLAYERS) {
     send(ws, { type: "lobby_error", error: "This lobby is already full." });
     return;
@@ -221,6 +221,7 @@ function handleSocketMessage(ws, raw) {
   } catch {
     return;
   }
+  if (!message || typeof message !== "object" || Array.isArray(message)) return;
 
   if (message.type === "host" || message.type === "join") {
     if (typeof message.kind !== "string" || message.kind.length > MAX_KIND_LENGTH) return;
@@ -237,6 +238,18 @@ function handleSocketMessage(ws, raw) {
 
   if (message.type === "leave_lobby") {
     leaveLobby(ws);
+    return;
+  }
+
+  if (message.type === "start_lobby") {
+    if (!lobby || lobby.host !== ws) {
+      send(ws, { type: "lobby_error", error: "Only the lobby host can start the match." });
+    } else if (lobby.members.length < LOBBY_MIN_PLAYERS) {
+      send(ws, { type: "lobby_error", error: "At least two players are needed to start." });
+    } else {
+      startRoom(lobby.members);
+      closeLobby("started");
+    }
     return;
   }
 

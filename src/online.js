@@ -1,4 +1,5 @@
 import { ONLINE_SKINS, unlockedSkins } from "../shared/skins.js";
+import { swordForWins, nextSwordTier } from "../shared/swords.js";
 
 const TOKEN_KEY = "universeCrazyToken";
 const LAST_USER_KEY = "universeCrazyLastUser";
@@ -22,8 +23,6 @@ let socket = null;
 let lobby = null;
 let noticeText = "";
 let noticeTimer = 0;
-let countdownTimer = 0;
-let lobbyDeadline = 0;
 let inMatch = false;
 
 const els = {};
@@ -117,8 +116,10 @@ function connectSocket() {
   if (socket && socket.readyState <= WebSocket.OPEN) return;
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
   socket = new WebSocket(`${protocol}//${location.host}/ws?token=${encodeURIComponent(token())}`);
-  socket.addEventListener("message", (event) => handleMessage(JSON.parse(event.data)));
-  socket.addEventListener("close", () => {
+  const connectedSocket = socket;
+  connectedSocket.addEventListener("message", (event) => handleMessage(JSON.parse(event.data)));
+  connectedSocket.addEventListener("close", () => {
+    if (socket !== connectedSocket) return;
     socket = null;
     lobby = null;
     renderLobby();
@@ -148,20 +149,16 @@ function showNotice(text, holdMs = 0) {
 function handleMessage(message) {
   if (message.type === "lobby") {
     lobby = { host: message.host, players: message.players, max: message.max };
-    lobbyDeadline = Date.now() + message.remainingMs;
     clearTimeout(noticeTimer);
     noticeText = "";
-    startCountdown();
     renderLobby();
   } else if (message.type === "lobby_closed") {
     lobby = null;
-    stopCountdown();
     if (message.reason === "started") {
       noticeText = "";
       renderLobby();
     } else {
       const reasons = {
-        expired: "Lobby closed. Six players did not join in time.",
         host_left: `${message.host} closed the lobby.`
       };
       showNotice(reasons[message.reason] || "Lobby closed.", NOTICE_HOLD_MS);
@@ -171,7 +168,6 @@ function handleMessage(message) {
   } else if (message.type === "match_start") {
     inMatch = true;
     lobby = null;
-    stopCountdown();
     noticeText = "";
     renderLobby();
     listeners.onMatchStart(message);
@@ -207,6 +203,10 @@ export function leaveLobbyNotice() {
   send({ type: "leave_lobby" });
 }
 
+export function startLobby() {
+  send({ type: "start_lobby" });
+}
+
 export function leaveMatch() {
   if (inMatch) send({ type: "leave" });
   inMatch = false;
@@ -224,15 +224,6 @@ export function reportOnlineResult(won) {
   send({ type: "result", won });
 }
 
-function startCountdown() {
-  if (!countdownTimer) countdownTimer = setInterval(renderLobby, 250);
-}
-
-function stopCountdown() {
-  clearInterval(countdownTimer);
-  countdownTimer = 0;
-}
-
 function renderLobby() {
   const hasNotice = Boolean(noticeText) || Boolean(lobby);
   const show = Boolean(account) && !inMatch && hasNotice;
@@ -241,18 +232,20 @@ function renderLobby() {
   if (!lobby) {
     els.lobbyText.textContent = noticeText;
     els.lobbyJoin.hidden = true;
+    els.lobbyStart.hidden = true;
     els.lobbyLeave.hidden = true;
     return;
   }
-  const seconds = Math.max(0, Math.ceil((lobbyDeadline - Date.now()) / 1000));
   const count = lobby.players.length;
   const hosting = lobby.host === account.username;
   const joined = lobby.players.includes(account.username);
-  els.lobbyText.textContent = hosting
-    ? `You are hosting · ${count}/${lobby.max} players · ${seconds}s left`
-    : `Match hosted by ${lobby.host} · ${count}/${lobby.max} players · ${seconds}s to join`;
+  els.lobbyText.textContent = noticeText || (hosting
+    ? `Hosting · ${count}/${lobby.max} players`
+    : `${lobby.host}'s lobby · ${count}/${lobby.max} players`);
   els.lobbyJoin.hidden = hosting || joined;
   els.lobbyJoin.disabled = count >= lobby.max;
+  els.lobbyStart.hidden = !hosting;
+  els.lobbyStart.disabled = count < 2;
   els.lobbyLeave.hidden = !(hosting || joined);
   els.lobbyLeave.textContent = hosting ? "Cancel lobby" : "Leave";
 }
@@ -270,6 +263,15 @@ function renderAccount() {
   if (!signedIn) return;
   els.welcome.textContent = `Signed in as ${account.username}`;
   els.record.textContent = `${account.wins} wins · ${account.matches} online matches`;
+  // The moon grows and glows as wins climb toward the 30-win Trillion Blade
+  const progress = Math.min(account.wins, 30) / 30;
+  els.moon.style.setProperty("--moon-scale", (0.6 + progress * 0.8).toFixed(3));
+  els.moon.style.setProperty("--moon-glow", (0.2 + progress * 0.8).toFixed(3));
+  const equipped = swordForWins(account.wins);
+  const next = nextSwordTier(account.wins);
+  els.sword.textContent = equipped
+    ? `Sword: ${equipped.label}${next ? ` · next: ${next.label} at ${next.wins} wins` : " · max tier reached"}`
+    : `No sword yet. Win ${nextSwordTier(0).wins} online match to unlock one.`;
   els.skinSelect.innerHTML = ONLINE_SKINS.map((skin) => {
     const unlocked = skins.some((owned) => owned.id === skin.id);
     const label = unlocked ? skin.label : `${skin.label} (${skin.wins} wins)`;
@@ -329,6 +331,18 @@ function bindForm(form, handler) {
 }
 
 export function initOnlineUi() {
+  // The moon's eyes follow the cursor so it keeps an eye on you
+  document.addEventListener("pointermove", (event) => {
+    if (!els.moon || els.modal.hidden || els.signedIn.hidden) return;
+    const rect = els.moon.getBoundingClientRect();
+    const dx = event.clientX - (rect.left + rect.width / 2);
+    const dy = event.clientY - (rect.top + rect.height / 2);
+    const distance = Math.hypot(dx, dy) || 1;
+    const offset = Math.min(distance, 60) / 60 * 4;
+    els.moon.style.setProperty("--look-x", `${((dx / distance) * offset).toFixed(2)}px`);
+    els.moon.style.setProperty("--look-y", `${((dy / distance) * offset).toFixed(2)}px`);
+  });
+
   Object.assign(els, {
     openButton: document.querySelector("#open-account"),
     modal: document.querySelector("#account-modal"),
@@ -348,11 +362,14 @@ export function initOnlineUi() {
     accountStatus: document.querySelector("#account-status"),
     welcome: document.querySelector("#account-welcome"),
     record: document.querySelector("#account-record"),
+    moon: document.querySelector("#account-moon"),
+    sword: document.querySelector("#account-sword"),
     skinSelect: document.querySelector("#skin-select"),
     logoutButton: document.querySelector("#logout-button"),
     lobbyNotice: document.querySelector("#lobby-notice"),
     lobbyText: document.querySelector("#lobby-text"),
     lobbyJoin: document.querySelector("#lobby-join"),
+    lobbyStart: document.querySelector("#lobby-start"),
     lobbyLeave: document.querySelector("#lobby-leave")
   });
 
@@ -368,6 +385,7 @@ export function initOnlineUi() {
   els.tabSignup.addEventListener("click", () => showAuthMode("signup"));
   els.tabLogin.addEventListener("click", () => showAuthMode("login"));
   els.lobbyJoin.addEventListener("click", () => joinOpenLobby());
+  els.lobbyStart.addEventListener("click", () => startLobby());
   els.lobbyLeave.addEventListener("click", () => leaveLobbyNotice());
   els.logoutButton.addEventListener("click", () => logOut());
   els.skinSelect.addEventListener("change", async () => {

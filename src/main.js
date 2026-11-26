@@ -1,9 +1,12 @@
 import * as THREE from "three";
-import { setOnlineListeners, initOnlineUi, restoreSession, isSignedIn, currentSkinId, hostOrJoinMatch, leaveMatch, sendOnlineState, sendOnlineHit, reportOnlineResult, openAccountFor } from "./online.js";
+import { setOnlineListeners, initOnlineUi, restoreSession, isSignedIn, currentAccount, currentSkinId, hostOrJoinMatch, leaveMatch, sendOnlineState, sendOnlineHit, reportOnlineResult, openAccountFor } from "./online.js";
 import { skinById } from "../shared/skins.js";
+import { swordForWins } from "../shared/swords.js";
+import { segmentHitsSphere } from "./collision.js";
 
 let onlineSendTimer = 0;
 let onlineRemotes = [];
+let onlineSlot = 0;
 
 const FIGHTER_SCALE = 0.85;
 const MAP_SCALE = 3;
@@ -1504,14 +1507,19 @@ function addMesh(parent, geometry, mat, position, scale = null) {
   if (parent === arena) {
     geometry.computeBoundingSphere();
     const largestScale = Math.max(mesh.scale.x, mesh.scale.y, mesh.scale.z);
-    streamedDecor.push({ mesh, center: mesh.position.clone(), radius: geometry.boundingSphere.radius * largestScale });
+    streamedDecor.push({ mesh, radius: geometry.boundingSphere.radius * largestScale });
   }
   return mesh;
 }
 
 function updateArenaStreaming() {
-  for (const entry of streamedDecor) {
-    entry.mesh.visible = entry.center.distanceTo(camera.position) - entry.radius < ARENA_STREAM_RANGE;
+  for (let index = streamedDecor.length - 1; index >= 0; index -= 1) {
+    const entry = streamedDecor[index];
+    if (entry.mesh.parent !== arena) {
+      streamedDecor.splice(index, 1);
+      continue;
+    }
+    entry.mesh.visible = entry.mesh.position.distanceToSquared(camera.position) < (ARENA_STREAM_RANGE + entry.radius) ** 2;
   }
 }
 
@@ -1873,6 +1881,7 @@ function createArena(index = arenaIndex) {
   portalDisc = null;
   secretSeal = null;
   arenaPlanets.length = 0;
+  arenaSurfaces.length = 0;
   hitEffects.length = 0;
   cameraShake = 0;
   arena.visible = !titleScreenActive;
@@ -1880,8 +1889,8 @@ function createArena(index = arenaIndex) {
   const theme = hiddenRealmActive ? secretTheme : arenaThemes[Math.floor(index / 20) % arenaThemes.length];
   const layout = hiddenRealmActive ? 0 : index % 20;
   const random = seededRandom(index + 941);
-  scene.background.set(theme.background);
-  scene.fog.color.set(theme.fog);
+  scene.background.set(theme.background).multiplyScalar(0.35);
+  scene.fog.color.copy(scene.background);
   portalLight.color.set(theme.portal);
   cyanLight.color.set(theme.glow);
 
@@ -1903,7 +1912,7 @@ function createArena(index = arenaIndex) {
 
   const radiusVariants = [46.8, 56.7, 41.4, 48.6, 59.1, 43.2, 52.2, 39.9, 54, 45.6];
   const planetDepthVariants = [0.38, 0.56, 0.25, 0.42, 0.62, 0.28, 0.48, 0.24, 0.58, 0.34];
-  floorRadius = radiusVariants[layout % radiusVariants.length] + random() * 0.4;
+  floorRadius = radiusVariants[layout % radiusVariants.length] * 1.25 + random() * 0.4;
   const planetDepth = floorRadius * planetDepthVariants[layout % planetDepthVariants.length];
   const planetCore = addMesh(
     arena,
@@ -2302,7 +2311,8 @@ function createFighterVisual(kind) {
     const headMat = shape.skin ? material(shape.skin, 0.5, 0.02) : mainMat;
     addMesh(body, latheFromKeys(shape.torso), mainMat, [0, 0, 0]);
     addMesh(body, new THREE.SphereGeometry(shape.headR, 16, 12), headMat, [0, 1.92, 0.02]);
-    addMesh(body, new THREE.BoxGeometry(shape.headR * 1.28, 0.19, 0.12), darkMat, [0, 1.89, shape.headR - 0.03]);
+    const visorMat = material(new THREE.Color(palette.dark).lerp(new THREE.Color(palette.trim), 0.5), 0.4, 0.05);
+    addMesh(body, new THREE.BoxGeometry(shape.headR * 1.28, 0.19, 0.12), visorMat, [0, 1.89, shape.headR - 0.03]);
     for (const side of [-1, 1]) {
       addBlinkingEye(new THREE.SphereGeometry(0.07, 9, 8), trimMat, [side * shape.headR * 0.36, 1.9, shape.headR + 0.04]);
       animatedLimbs.push(createLimb(body, palette, side * shape.armX, 1.14, 0, shape.armLen, shape.armR, side * -0.12));
@@ -2596,7 +2606,20 @@ function cpuLevelFor(fighter) {
   return fighter.kind === "entity" ? difficultyLevels.nightmare : difficultyLevels[cpuDifficulty];
 }
 
-function makeFighter(kind, index) {
+function attachSword(visual, tier) {
+  const sword = new THREE.Group();
+  sword.position.set(0.62, 1.0, 0.12);
+  sword.rotation.set(0.5, 0, -0.35);
+  const bladeMat = new THREE.MeshStandardMaterial({ color: tier.color, emissive: tier.color, emissiveIntensity: 0.6, metalness: 0.7, roughness: 0.2 });
+  addMesh(sword, new THREE.BoxGeometry(0.07, 1.1, 0.035), bladeMat, [0, 0.55, 0]);
+  addMesh(sword, new THREE.BoxGeometry(0.3, 0.06, 0.06), material("#2a2233", 0.5, 0.3), [0, 0.02, 0]);
+  visual.add(sword);
+  return sword;
+}
+
+const fighterSpawns = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4], [-1.3, -3.9], [1.3, 3.9]];
+
+function makeFighter(kind, index, spawnIndex = index) {
   const visual = createFighterVisual(kind);
   if (kind === "dinosaur") visual.scale.setScalar(1.12);
   const powerAura = addMesh(visual, new THREE.TorusGeometry(0.9, 0.045, 8, 24), new THREE.MeshBasicMaterial({ color: "#ffe57c", transparent: true, opacity: 0.9 }), [0, 1.18, 0], [1.35, 1, 1.35]);
@@ -2613,11 +2636,14 @@ function makeFighter(kind, index) {
     const tail = addMesh(visual, new THREE.ConeGeometry(0.18, 1.2, 8), material(palette.primary, 0.36, 0.12), [0, 0.45, -0.85]);
     tail.rotation.x = Math.PI / 2;
   }
-  const [x, z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4], [-1.3, -3.9], [1.3, 3.9]][index % 6];
+  const [x, z] = fighterSpawns[spawnIndex % fighterSpawns.length];
   visual.position.set(x, 0.08, z);
   arena.add(visual);
+  // Swords are single-player only: online matches never equip one
+  const swordTier = index === 0 && battleMode === "cpu" && isSignedIn() ? swordForWins(currentAccount().wins) : null;
+  if (swordTier) attachSword(visual, swordTier);
   return {
-    kind, visual, x, y: 0.08, z,
+    kind, visual, x, y: 0.08, z, swordTier, spawnIndex,
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
     hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
@@ -2754,7 +2780,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   const fighterCount = remotes.length
     ? remotes.length + 1
     : secretChallengeActive || battleMode === "split" || battleMode === "online" ? 2 : battleMode === "cpu" ? 6 : 4;
-  fighters.push(makeFighter(selectedFighter, 0));
+  fighters.push(makeFighter(selectedFighter, 0, battleMode === "online" ? onlineSlot : 0));
   for (let index = 1; index < fighterCount; index += 1) {
     const remote = remotes[index - 1];
     const kind = remote
@@ -2762,7 +2788,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
       : index === 1 && opponentOverride
         ? opponentOverride
         : activePool[(index - 1) % activePool.length];
-    const fighter = makeFighter(kind, index);
+    const fighter = makeFighter(kind, index, remote ? remote.slot : index);
     if (remote) {
       fighter.remote = true;
       fighter.remoteSlot = remote.slot;
@@ -2788,7 +2814,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   });
   const portalEntryDuration = 1.45;
   fighters.forEach((fighter, index) => {
-    fighter.portalDelay = index * 0.42;
+    fighter.portalDelay = fighter.spawnIndex * 0.42;
     fighter.portalEntry = portalEntryDuration;
     fighter.portalEntryDuration = portalEntryDuration;
     fighter.portalEntryTarget = { x: fighter.x, z: fighter.z };
@@ -2995,6 +3021,9 @@ function launchProjectile(fighter, options = {}) {
     power: characters[fighter.kind].power * (fighter.powerBoost > 0 ? 1.7 : 1)
   });
 }
+
+const collisionCenter = new THREE.Vector3();
+const projectileStart = new THREE.Vector3();
 
 function spawnAbilityRing(fighter, color, duration = 0.45) {
   const effect = new THREE.Group();
@@ -3596,7 +3625,10 @@ function attack(fighter, target, special = false) {
       .sort((a, b) => (a.x - fighter.x) ** 2 + (a.z - fighter.z) ** 2 - (b.x - fighter.x) ** 2 - (b.z - fighter.z) ** 2)[0]
       || nearestOpponent(fighter);
   }
-  if (!target) return;
+  if (!target) {
+    tryActivateSecretSeal(fighter);
+    return;
+  }
   const dx = target.x - fighter.x;
   const dz = target.z - fighter.z;
   const inReach = Math.hypot(dx, dz) < 2.15 * FIGHTER_SCALE;
@@ -3604,7 +3636,8 @@ function attack(fighter, target, special = false) {
   const inHeight = Math.abs(target.y - fighter.y) < 1.5 * FIGHTER_SCALE;
   if (inReach && Math.abs(dz) < 1.75 * FIGHTER_SCALE && inFront && inHeight) {
     const boost = fighter.powerBoost > 0 ? 1.7 : 1;
-    hitTarget(fighter, target, 7 * characters[fighter.kind].power * boost, 4.4);
+    const damage = fighter.swordTier ? fighter.swordTier.damage : 7 * characters[fighter.kind].power * boost;
+    hitTarget(fighter, target, damage, 4.4);
   }
   tryActivateSecretSeal(fighter);
 }
@@ -3644,9 +3677,8 @@ function respawn(fighter, index) {
     updateHud();
     return;
   }
-  [fighter.x, fighter.z] = [[-3.4, 1.1], [3.4, -0.6], [-3.4, -2.2], [3.4, 2.4]][index % 4];
+  [fighter.x, fighter.z] = fighterSpawns[fighter.spawnIndex % fighterSpawns.length];
   fighter.y = 0.08;
-  fighter.z = index === 0 ? 1.1 : -0.6;
   fighter.vx = 0;
   fighter.vy = 0;
   fighter.vz = 0;
@@ -3670,16 +3702,21 @@ const difficultyLevels = {
 };
 let cpuDifficulty = "normal";
 
+const PLAYER_CONTROLS = [
+  { horizontal: ["KeyA", "KeyD"], depth: ["KeyW", "KeyS"], jump: "Space", strike: "KeyJ", special: "KeyK", crouch: "KeyC" },
+  { horizontal: ["ArrowLeft", "ArrowRight"], depth: ["ArrowUp", "ArrowDown"], jump: "ArrowUp", strike: "Enter", special: "ShiftRight", crouch: "ControlRight" },
+  { horizontal: ["KeyF", "KeyH"], depth: ["KeyT", "KeyG"], jump: "KeyR", strike: "KeyY", special: "KeyU", crouch: "KeyB" },
+  { horizontal: ["Numpad4", "Numpad6"], depth: ["Numpad8", "Numpad5"], jump: "Numpad0", strike: "Numpad1", special: "Numpad2", crouch: "Numpad3" }
+];
+
 function readInput(fighter, index, delta) {
   const isCpu = index > 0 && battleMode === "cpu";
   const pressed = (...codes) => codes.some((code) => keys.has(code) || virtualKeys.has(code));
   const tapped = (...codes) => codes.some((code) => justPressed.has(code));
-  const playerControls = [
-    { horizontal: ["KeyA", "KeyD"], depth: ["KeyW", "KeyS"], jump: "Space", strike: "KeyJ", special: "KeyK", crouch: "KeyC" },
-    { horizontal: ["ArrowLeft", "ArrowRight"], depth: ["ArrowUp", "ArrowDown"], jump: "ArrowUp", strike: "Enter", special: "ShiftRight", crouch: "ControlRight" },
-    { horizontal: ["KeyF", "KeyH"], depth: ["KeyT", "KeyG"], jump: "KeyR", strike: "KeyY", special: "KeyU", crouch: "KeyB" },
-    { horizontal: ["Numpad4", "Numpad6"], depth: ["Numpad8", "Numpad5"], jump: "Numpad0", strike: "Numpad1", special: "Numpad2", crouch: "Numpad3" }
-  ][index];
+  const playerControls = PLAYER_CONTROLS[index];
+  // Online, your own fighter answers to every control set, so any keys work on your machine
+  const anyControls = battleMode === "online" && index === 0 ? PLAYER_CONTROLS : [playerControls];
+  const pick = (field) => anyControls.flatMap(field);
   let horizontal = 0;
   let depth = 0;
   let jump = false;
@@ -3689,17 +3726,17 @@ function readInput(fighter, index, delta) {
 
   if (!isCpu) {
     const arrowAliases = index === 0 && battleMode === "cpu";
-    const left = [playerControls.horizontal[0], ...(arrowAliases ? ["ArrowLeft"] : [])];
-    const right = [playerControls.horizontal[1], ...(arrowAliases ? ["ArrowRight"] : [])];
-    const back = [playerControls.depth[0], ...(arrowAliases ? ["ArrowUp"] : [])];
-    const forward = [playerControls.depth[1], ...(arrowAliases ? ["ArrowDown"] : [])];
-    const jumpKeys = [playerControls.jump, ...(arrowAliases ? ["ArrowUp"] : [])];
+    const left = [...pick((c) => c.horizontal[0]), ...(arrowAliases ? ["ArrowLeft"] : [])];
+    const right = [...pick((c) => c.horizontal[1]), ...(arrowAliases ? ["ArrowRight"] : [])];
+    const back = [...pick((c) => c.depth[0]), ...(arrowAliases ? ["ArrowUp"] : [])];
+    const forward = [...pick((c) => c.depth[1]), ...(arrowAliases ? ["ArrowDown"] : [])];
+    const jumpKeys = [...pick((c) => c.jump), ...(arrowAliases ? ["ArrowUp"] : [])];
     horizontal = Number(pressed(...right)) - Number(pressed(...left));
     depth = Number(pressed(...forward)) - Number(pressed(...back));
     jump = pressed(...jumpKeys) && tapped(...jumpKeys);
-    strike = tapped(playerControls.strike, ...(arrowAliases ? ["Enter"] : []));
-    special = tapped(playerControls.special, ...(arrowAliases ? ["ShiftRight"] : []));
-    crouchHeld = pressed(playerControls.crouch);
+    strike = tapped(...pick((c) => c.strike), ...(arrowAliases ? ["Enter"] : []));
+    special = tapped(...pick((c) => c.special), ...(arrowAliases ? ["ShiftRight"] : []));
+    crouchHeld = pressed(...pick((c) => c.crouch));
   } else {
     const level = cpuLevelFor(fighter);
     const target = nearestOpponent(fighter);
@@ -3871,12 +3908,10 @@ function updateFighter(fighter, index, delta, elapsed) {
 
   // Step up stairs smoothly while grounded
   if (wasGrounded) {
-    const steppedSurface = arenaSurfaces.find((surface) =>
-      surface.stair &&
-      surface.top > previousY &&
-      surface.top <= previousY + 0.25 &&
-      isOverSurface(surface, fighter.x, fighter.z, 0.18)
-    );
+    const steppedSurface = arenaSurfaces.reduce((best, surface) =>
+      surface.stair && surface.top > previousY && surface.top <= previousY + 0.25 &&
+      isOverSurface(surface, fighter.x, fighter.z, 0.18) && (!best || surface.top > best.top)
+        ? surface : best, null);
     if (steppedSurface) {
       fighter.y = steppedSurface.top;
       fighter.vy = 0;
@@ -3886,11 +3921,10 @@ function updateFighter(fighter, index, delta, elapsed) {
 
   // Land on top of solid platforms/stairs (no clipping through from above)
   if (fighter.vy <= 0) {
-    const landedSurface = arenaSurfaces.find((surface) =>
-      previousY >= surface.top - 0.14 &&
-      fighter.y <= surface.top &&
-      isOverSurface(surface, fighter.x, fighter.z, 0.26)
-    );
+    const landedSurface = arenaSurfaces.reduce((best, surface) =>
+      previousY >= surface.top - 0.14 && fighter.y <= surface.top &&
+      isOverSurface(surface, fighter.x, fighter.z, 0.26) && (!best || surface.top > best.top)
+        ? surface : best, null);
     if (landedSurface) {
       fighter.y = landedSurface.top;
       fighter.vy = 0;
@@ -3970,14 +4004,16 @@ function updateFighter(fighter, index, delta, elapsed) {
     const dz = fighter.z - other.z;
     const dist = Math.hypot(dx, dz);
     const minSep = 0.86 * FIGHTER_SCALE;
-    if (dist > 0.001 && dist < minSep) {
-      const push = (minSep - dist) * 0.5;
-      fighter.x += (dx / dist) * push;
-      fighter.z += (dz / dist) * push;
+    if (dist < minSep) {
+      const directionX = dist > 0.001 ? dx / dist : (fighter.spawnIndex < other.spawnIndex ? -1 : 1);
+      const directionZ = dist > 0.001 ? dz / dist : 0;
+      const push = (minSep - dist) * (other.remote ? 1 : 0.5);
+      fighter.x += directionX * push;
+      fighter.z += directionZ * push;
       // A remote fighter's own client pushes it out of this fighter, so only move local bodies here
       if (!other.remote) {
-        other.x -= (dx / dist) * push;
-        other.z -= (dz / dist) * push;
+        other.x -= directionX * push;
+        other.z -= directionZ * push;
       }
     }
   }
@@ -4041,10 +4077,22 @@ function animateFighterBody(fighter, elapsed) {
 function updateRemoteFighter(fighter, delta, elapsed) {
   const snapshot = fighter.remoteTarget;
   if (!snapshot) return;
-  const follow = 1 - Math.exp(-16 * delta);
-  fighter.x += (snapshot.x - fighter.x) * follow;
-  fighter.y += (snapshot.y - fighter.y) * follow;
-  fighter.z += (snapshot.z - fighter.z) * follow;
+  // Project the last snapshot forward by its age so motion stays smooth between network updates
+  const age = THREE.MathUtils.clamp((performance.now() - (fighter.remoteReceivedAt || 0)) / 1000, 0, 0.15);
+  const targetX = snapshot.x + (snapshot.falling ? 0 : snapshot.vx * age);
+  const targetY = snapshot.y + (snapshot.falling ? 0 : snapshot.vy * age);
+  const targetZ = snapshot.z + (snapshot.falling ? 0 : snapshot.vz * age);
+  const gap = Math.hypot(targetX - fighter.x, targetY - fighter.y, targetZ - fighter.z);
+  if (gap > 4) {
+    fighter.x = targetX;
+    fighter.y = targetY;
+    fighter.z = targetZ;
+  } else {
+    const follow = 1 - Math.exp(-26 * delta);
+    fighter.x += (targetX - fighter.x) * follow;
+    fighter.y += (targetY - fighter.y) * follow;
+    fighter.z += (targetZ - fighter.z) * follow;
+  }
   Object.assign(fighter, {
     vx: snapshot.vx, vy: snapshot.vy, vz: snapshot.vz, facing: snapshot.facing,
     grounded: snapshot.grounded, crouching: snapshot.crouching, hp: snapshot.hp, damage: snapshot.damage,
@@ -4132,6 +4180,7 @@ function updateProjectiles(delta) {
         }
       }
     } else {
+      projectileStart.copy(projectile.mesh.position);
       if (projectile.boomerang) {
         projectile.vx -= Math.sign(projectile.owner.facing || 1) * 18 * delta;
       }
@@ -4158,19 +4207,17 @@ function updateProjectiles(delta) {
       if (hitWall || projectile.mesh.position.y <= 0.1) {
         projectile.life = 0;
       }
-      for (const target of fighters) {
+      for (const target of hitWall || projectile.mesh.position.y <= 0.1 ? [] : fighters) {
         if (target === projectile.owner || target.eliminated || target.respawn > 0) continue;
-        const dx = projectile.mesh.position.x - target.x;
-        const dy = projectile.mesh.position.y - (target.y + 1.3);
-        const dz = projectile.mesh.position.z - target.z;
-        if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
+        collisionCenter.set(target.x, target.y + 1.3 * FIGHTER_SCALE, target.z);
+        if (segmentHitsSphere(projectileStart, projectile.mesh.position, collisionCenter, projectile.hitRadius)) {
           hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
           projectile.life = 0;
           break;
         }
       }
     }
-    if (projectile.life <= 0 || Math.abs(projectile.mesh.position.x) > 12) {
+    if (projectile.life <= 0 || Math.hypot(projectile.mesh.position.x, projectile.mesh.position.z) > floorRadius + 10) {
       arena.remove(projectile.mesh);
       disposeObject(projectile.mesh);
       projectiles.splice(i, 1);
@@ -4531,7 +4578,7 @@ function createExploreWorld() {
   for (let index = 0; index < 14; index += 1) {
     const radius = index === 0 ? 6 : 3.4 + (index % 3) * 1.1;
     const angle = index * 0.9;
-    const ring = 16 + (index % 3) * 3;
+    const ring = 28 + (index % 3) * 7;
     const center = index === 0
       ? new THREE.Vector3(0, -radius, 0)
       : new THREE.Vector3(Math.cos(angle) * ring, 4 + index * 5.4, Math.sin(angle) * ring);
@@ -4574,35 +4621,61 @@ function createExploreWorld() {
     }
   }
 
+  for (let index = 0; index < 12; index += 1) {
+    const angle = index * 2.4;
+    const distance = 80 + (index % 4) * 38;
+    const radius = 4 + (index % 3) * 2;
+    const center = new THREE.Vector3(Math.cos(angle) * distance, -20 + (index % 6) * 20, Math.sin(angle) * distance);
+    const color = planetPalette[index % planetPalette.length];
+    addMesh(group, new THREE.SphereGeometry(radius, 16, 12), material(color, 0.75, 0.08), center.toArray());
+    planets.push({ center, radius });
+  }
+
   const itemMat = material("#ffd166", 0.2, 0.3, { emissive: "#ffb000", emissiveIntensity: 1.2 });
   const itemGeometry = new THREE.OctahedronGeometry(0.9, 0);
   const items = [];
   for (let index = 0; index < EXPLORE_ITEM_COUNT; index += 1) {
     const angle = index * 0.9 + 0.4;
-    const radius = 20 + (index % 3) * 6;
+    const radius = 30 + (index % 3) * 10;
     const position = new THREE.Vector3(Math.cos(angle) * radius, 4 + (index % 4) * 5, Math.sin(angle) * radius);
     const mesh = addMesh(group, itemGeometry, itemMat, position.toArray());
     items.push({ mesh, base: position, taken: false });
   }
 
-  // Small fighter pairs clash on the planets below the flight path
   const battleMats = [
     material("#72e0a2", 0.5, 0.1),
     material("#ffd166", 0.5, 0.1),
     material("#ff7189", 0.5, 0.1),
     material("#7fd8ff", 0.5, 0.1)
   ];
-  const sparkMat = new THREE.MeshBasicMaterial({ color: "#fff6a0", transparent: true, opacity: 0 });
+  const sparkMat = new THREE.MeshBasicMaterial({ color: "#fff6a0" });
+  const battleBody = new THREE.CapsuleGeometry(0.42, 0.65, 3, 8);
+  const battleHead = new THREE.SphereGeometry(0.4, 8, 6);
+  const battleLimb = new THREE.BoxGeometry(0.22, 0.8, 0.22);
+  const battleSpark = new THREE.OctahedronGeometry(0.65, 0);
+  const buildDistantFighter = (color, x) => {
+    const fighter = new THREE.Group();
+    fighter.position.x = x;
+    addMesh(fighter, battleBody, color, [0, 1, 0]);
+    addMesh(fighter, battleHead, color, [0, 1.95, 0]);
+    for (const side of [-1, 1]) {
+      const arm = addMesh(fighter, battleLimb, color, [side * 0.6, 1.15, 0]);
+      arm.rotation.z = side * 0.65;
+      addMesh(fighter, battleLimb, color, [side * 0.25, 0.4, 0]);
+    }
+    return fighter;
+  };
   const battles = [];
   for (let index = 0; index < 6; index += 1) {
-    const angle = index * 1.05;
+    const planet = planets[1 + index * 2];
     const pair = new THREE.Group();
-    pair.position.set(Math.cos(angle) * 34, -10, Math.sin(angle) * 34);
+    pair.position.copy(planet.center).add(new THREE.Vector3(0, planet.radius, 0));
     group.add(pair);
-    const left = addMesh(pair, new THREE.BoxGeometry(1.4, 2, 1.4), battleMats[index % 4], [-1.6, 1, 0]);
-    const right = addMesh(pair, new THREE.BoxGeometry(1.4, 2, 1.4), battleMats[(index + 1) % 4], [1.6, 1, 0]);
-    const spark = addMesh(pair, new THREE.SphereGeometry(0.9, 8, 6), sparkMat, [0, 1.6, 0]);
-    battles.push({ left, right, spark, center: pair.position.clone(), phase: index * 1.7, calm: 0 });
+    const left = buildDistantFighter(battleMats[index % 4], -1.6);
+    const right = buildDistantFighter(battleMats[(index + 1) % 4], 1.6);
+    pair.add(left, right);
+    const spark = addMesh(pair, battleSpark, sparkMat, [0, 1.6, 0]);
+    battles.push({ left, right, spark, center: pair.position.clone().add(new THREE.Vector3(0, 1.2, 0)), phase: index * 1.7, calm: 0 });
   }
 
   const rivals = createRivals(group);
@@ -4619,7 +4692,7 @@ function createExploreWorld() {
     group,
     ship,
     thruster,
-    position: planets[0].center.clone().add(new THREE.Vector3(0, planets[0].radius + 1, 0)),
+    position: planets[0].center.clone().add(new THREE.Vector3(0, planets[0].radius + 1.4, 0)),
     velocity: new THREE.Vector3(),
     forward: new THREE.Vector3(0, 0, -1),
     up: new THREE.Vector3(0, 1, 0),
@@ -4655,6 +4728,7 @@ function createExploreWorld() {
     time: 0,
     camPos: new THREE.Vector3(0, 5.2, 9),
     status: "",
+    minimapTimer: 0,
     over: false
   };
 }
@@ -4702,6 +4776,8 @@ function disposeExploreWorld(world) {
   world.blastGeometry.dispose();
   world.sparkMat.dispose();
   arena.visible = world.arenaWasVisible;
+  starField.position.set(0, 0, 0);
+  galaxyBackdrop.position.set(-3, 10, -43);
   camera.up.set(0, 1, 0);
   document.querySelector("#explore-minimap").hidden = true;
 }
@@ -4713,15 +4789,17 @@ function updateExploreBattles(world, delta) {
     if (battle.calm > 0) {
       battle.left.position.x = -0.6;
       battle.right.position.x = 0.6;
-      battle.spark.material.opacity = 0.35;
+      battle.spark.visible = true;
       battle.spark.scale.setScalar(0.6);
       return;
     }
     battle.left.position.x = -1.6 + Math.sin(time * 3) * 0.8;
     battle.right.position.x = 1.6 - Math.sin(time * 3) * 0.8;
     const flash = Math.max(0, Math.sin(time * 6));
-    battle.spark.material.opacity = Math.pow(flash, 6) * 0.9;
+    battle.spark.visible = flash > 0.75;
     battle.spark.scale.setScalar(0.6 + flash * 0.8);
+    battle.left.rotation.z = Math.sin(time * 3) * 0.2;
+    battle.right.rotation.z = -Math.sin(time * 3) * 0.2;
   });
 }
 
@@ -4793,8 +4871,8 @@ function resolveExplorePlanets(world) {
     const offset = world.position.clone().sub(planet.center);
     const distance = offset.length();
     const minimum = planet.radius + 1.2;
-    if (distance >= minimum || distance === 0) continue;
-    const normal = offset.normalize();
+    if (distance >= minimum) continue;
+    const normal = distance > 0.001 ? offset.normalize() : new THREE.Vector3(0, 1, 0);
     world.position.copy(planet.center).addScaledVector(normal, minimum);
     const inward = world.velocity.dot(normal);
     if (inward < 0) world.velocity.addScaledVector(normal, -inward * 1.4);
@@ -4805,10 +4883,10 @@ function resolveExplorePlanets(world) {
   }
 }
 
-const EXPLORE_BOUNDS = 160;
+const EXPLORE_BOUNDS = 260;
 
 function resolveExploreBounds(world) {
-  const limits = { x: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS], y: [-60, 130], z: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS] };
+  const limits = { x: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS], y: [-100, 180], z: [-EXPLORE_BOUNDS, EXPLORE_BOUNDS] };
   for (const axis of ["x", "y", "z"]) {
     const [min, max] = limits[axis];
     if (world.position[axis] > max) {
@@ -4829,7 +4907,7 @@ function drawExploreMinimap(world) {
   const size = canvas.width;
   const half = size / 2;
   const scale = half / MINIMAP_RANGE;
-  const toMap = (x, z) => [half + x * scale, half + z * scale];
+  const toMap = (x, z) => [half + (x - world.position.x) * scale, half + (z - world.position.z) * scale];
 
   ctx.clearRect(0, 0, size, size);
   ctx.fillStyle = "rgba(6, 10, 26, 0.78)";
@@ -4839,6 +4917,10 @@ function drawExploreMinimap(world) {
   ctx.strokeStyle = "rgba(76, 233, 255, 0.6)";
   ctx.lineWidth = 2;
   ctx.stroke();
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(half, half, half - 2, 0, Math.PI * 2);
+  ctx.clip();
 
   ctx.fillStyle = "#7fd8ff";
   world.planets.forEach((planet) => {
@@ -4894,6 +4976,7 @@ function drawExploreMinimap(world) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
+  ctx.restore();
 
   const distance = Math.round(world.position.distanceTo(entityPosition));
   const altitude = Math.round(entityPosition.y - world.position.y);
@@ -4941,11 +5024,12 @@ function updateExploreEntity(world, delta) {
 function updateExploreBolts(world, delta) {
   for (let index = world.bolts.length - 1; index >= 0; index -= 1) {
     const bolt = world.bolts[index];
+    projectileStart.copy(bolt.mesh.position);
     bolt.mesh.position.addScaledVector(bolt.velocity, delta);
     bolt.life -= delta;
     let remove = bolt.life <= 0;
     if (bolt.owner === "player") {
-      const battle = world.battles.find((item) => bolt.mesh.position.distanceTo(item.center) < 4);
+      const battle = world.battles.find((item) => segmentHitsSphere(projectileStart, bolt.mesh.position, item.center, 4));
       if (battle) {
         battle.calm = 6;
         world.hull = Math.min(100, world.hull + 4);
@@ -4953,17 +5037,17 @@ function updateExploreBolts(world, delta) {
       }
     }
     if (!remove) {
-      const hitRival = world.rivals.find((rival) => rival.alive && rival !== bolt.shooter && bolt.mesh.position.distanceTo(rival.position) < 2.4);
+      const hitRival = world.rivals.find((rival) => rival.alive && rival !== bolt.shooter && segmentHitsSphere(projectileStart, bolt.mesh.position, rival.position, 2.4));
       if (hitRival) {
         damageRival(world, hitRival, 1, bolt.owner === "player");
         remove = true;
       }
     }
-    if (bolt.owner === "player" && bolt.mesh.position.distanceTo(world.entityMesh.position) < 3) {
+    if (!remove && bolt.owner === "player" && segmentHitsSphere(projectileStart, bolt.mesh.position, world.entityMesh.position, 3)) {
       world.entityHp = Math.max(0, world.entityHp - 4);
       world.glitch = 0.15;
       remove = true;
-    } else if (bolt.owner !== "player" && bolt.mesh.position.distanceTo(world.position) < 1.3 && world.hurtTimer <= 0) {
+    } else if (!remove && bolt.owner !== "player" && segmentHitsSphere(projectileStart, bolt.mesh.position, world.position, 1.3) && world.hurtTimer <= 0) {
       world.hull = Math.max(0, world.hull - (bolt.owner === "entity" ? 6 : 5));
       world.hurtTimer = 0.4;
       remove = true;
@@ -5106,6 +5190,8 @@ function updateExplore(delta) {
   resolveExplorePlanets(world);
 
   world.ship.position.copy(world.position);
+  starField.position.copy(world.position);
+  galaxyBackdrop.position.set(world.position.x - 3, world.position.y + 10, world.position.z - 100);
   world.ship.lookAt(world.position.clone().add(world.forward));
   world.ship.rotateZ(world.bank);
   const flare = forwardInput > 0 ? (boost > 1 ? 2.6 : 1.4) : 0.6;
@@ -5146,7 +5232,11 @@ function updateExplore(delta) {
 
   const rivalsAlive = world.rivals.filter((rival) => rival.alive).length;
   const status = `ENTITY.EXE ${Math.ceil(world.entityHp)}/${EXPLORE_ENTITY_MAX_HP} · HULL ${Math.ceil(world.hull)}% · ITEMS ${world.itemsFound}/${EXPLORE_ITEM_COUNT} · RIVALS ${rivalsAlive} · KILLS ${world.kills} · SURVIVED ${Math.floor(world.time)}s`;
-  drawExploreMinimap(world);
+  world.minimapTimer -= delta;
+  if (world.minimapTimer <= 0) {
+    world.minimapTimer = 0.2;
+    drawExploreMinimap(world);
+  }
   if (status !== world.status) {
     world.status = status;
     document.querySelector("#battle-status").textContent = status;
@@ -5158,11 +5248,12 @@ function frame(timestamp = 0) {
     keys.clear();
     return;
   }
-  if (timestamp - lastFrameTime < frameInterval) {
+  const frameElapsed = timestamp - lastFrameTime;
+  if (frameInterval > 0 && frameElapsed < frameInterval - 0.5) {
     animationFrame = requestAnimationFrame(frame);
     return;
   }
-  lastFrameTime = timestamp;
+  lastFrameTime = frameInterval > 0 ? timestamp - Math.max(0, frameElapsed % frameInterval) : timestamp;
   const delta = Math.min(clock.getDelta(), 1 / 30);
   const elapsed = clock.elapsedTime;
   animatePortal(elapsed, delta);
@@ -5177,7 +5268,7 @@ function frame(timestamp = 0) {
     if (battleMode === "online" && fighters[0]) {
       onlineSendTimer -= delta;
       if (onlineSendTimer <= 0) {
-        onlineSendTimer = 0.1;
+        onlineSendTimer = 0.05;
         sendOnlineState({ snapshot: onlineSnapshot(fighters[0]) });
       }
     }
@@ -5517,7 +5608,7 @@ const battleModeCycle = [
   { id: "cpu", label: "Solo vs. 5 CPUs", short: "SOLO VS CPUS" },
   { id: "local", label: "Local 4-player", short: "LOCAL 4-PLAYER" },
   { id: "split", label: "Split-screen 1v1", short: "SPLIT-SCREEN 1V1" },
-  { id: "online", label: "Online 1v1 matchmaking", short: "ONLINE 1V1" }
+  { id: "online", label: "Online lobby: 2–6 players", short: "ONLINE LOBBY" }
 ];
 function cycleBattleMode() {
   const currentIndex = battleModeCycle.findIndex((mode) => mode.id === battleMode);
@@ -5581,6 +5672,7 @@ setOnlineListeners({
   getFighterKind: () => selectedFighter,
   onMatchStart(message) {
     const { slot, arenaSeed, players } = message;
+    onlineSlot = slot;
     if (Number.isFinite(arenaSeed) && !hiddenRealmActive) {
       arenaIndex = Math.floor(arenaSeed * arenaCount) % arenaCount;
       createArena(arenaIndex);
@@ -5597,8 +5689,11 @@ setOnlineListeners({
   onState(message) {
     const remote = fighterBySlot(message.slot);
     if (remote && message.snapshot) {
+      if (remote.hp !== message.snapshot.hp || remote.damage !== message.snapshot.damage || remote.stocks !== message.snapshot.stocks) {
+        hudDirty = true;
+      }
       remote.remoteTarget = message.snapshot;
-      hudDirty = true;
+      remote.remoteReceivedAt = performance.now();
     }
   },
   onHit(message) {
@@ -5606,8 +5701,8 @@ setOnlineListeners({
     const attacker = fighterBySlot(message.from) || fighters[0];
     hitTarget(attacker, fighters[0], message.damage, message.force);
   },
-  onPlayerLeft(message) {
-    const remote = fighterBySlot(message.slot);
+  onPlayerLeft(slot) {
+    const remote = fighterBySlot(slot);
     if (!remote || remote.eliminated || !matchActive || matchEnded) return;
     remote.eliminated = true;
     remote.falling = false;
