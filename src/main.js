@@ -2654,7 +2654,7 @@ function makeFighter(kind, index, spawnIndex = index) {
   return {
     kind, visual, x, y: 0.08, z, swordTier, spawnIndex,
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
-    hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
+    hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0, specialStartTime: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
     attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, cpuStuckTime: 0, cpuDodgeTime: 0, cpuDodgeDir: 1, cpuLastX: x, cpuLastZ: z,
@@ -3646,6 +3646,8 @@ function attack(fighter, target, special = false) {
     fighter.cooldown = 0.55;
     fighter.attackPose = 0.55;
     fighter.specialCooldown = 4;
+    fighter.specialStartTime = 0.18;
+    cameraOrbit.targetZoom = cameraOrbit.specialZoom;
     useSpecialAbility(fighter);
     return;
   }
@@ -3869,6 +3871,9 @@ function updateFighter(fighter, index, delta, elapsed) {
   }
   fighter.cooldown = Math.max(0, fighter.cooldown - delta);
   fighter.specialCooldown = Math.max(0, fighter.specialCooldown - delta);
+  if (fighter.specialCooldown > 0 && fighter.specialCooldown < 3.75) {
+    cameraOrbit.targetZoom = THREE.MathUtils.lerp(cameraOrbit.specialZoom, 1, 1 - fighter.specialCooldown / 3.75);
+  }
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
   fighter.kickPose = Math.max(0, fighter.kickPose - delta);
@@ -3929,7 +3934,8 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  if (!portalIntroActive && fighter.slipTimer <= 0) readInput(fighter, index, delta);
+  if (!portalIntroActive && fighter.slipTimer <= 0 && fighter.specialStartTime <= 0) readInput(fighter, index, delta);
+  fighter.specialStartTime = Math.max(0, fighter.specialStartTime - delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -4038,6 +4044,14 @@ function updateFighter(fighter, index, delta, elapsed) {
     fighter.y = 0.08;
     fighter.vy = Math.max(0, fighter.vy);
     fighter.grounded = true;
+  }
+
+  if (edgeDistance > floorRadius * 0.88 && fighter.specialStartTime <= 0) {
+    const pushStrength = (edgeDistance - floorRadius * 0.88) * 2.4;
+    if (edgeDistance > 0.1) {
+      fighter.vx -= (fighter.x / edgeDistance) * pushStrength;
+      fighter.vz -= (fighter.z / edgeDistance) * pushStrength;
+    }
   }
 
   // Fighter-to-fighter solid body separation hitbox
@@ -4176,6 +4190,7 @@ function updateRemoteFighter(fighter, delta, elapsed) {
 }
 
 function updateProjectiles(delta) {
+  const fighterCount = fighters.length;
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const projectile = projectiles[i];
     projectile.life -= delta;
@@ -4197,31 +4212,34 @@ function updateProjectiles(delta) {
         projectile.mesh.position.x += projectile.vx * delta;
       }
       projectile.mesh.rotation.z += delta * 2.2;
-      for (const target of projectile.visualOnly ? [] : fighters) {
-        if (target.eliminated || target.portalEntry > 0 || target.respawn > 0 || target.invulnerable > 0) continue;
-        if (target === projectile.owner && projectile.armTimer > 0) continue;
-        const dx = projectile.mesh.position.x - target.x;
-        const dy = projectile.mesh.position.y - (target.y + 0.3);
-        const dz = projectile.mesh.position.z - target.z;
-        if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
-          target.slipTimer = 0.85;
-          target.vy = 5.4;
-          target.grounded = false;
-          target.vx = (Math.abs(target.vx) > 0.5 ? Math.sign(target.vx) : target.facing) * 3.8;
-          if (target === projectile.owner) {
-            target.damage += 4;
-            target.hp = Math.max(0, target.hp - 4);
-            target.hitFlash = 0.25;
-            hudDirty = true;
-            spawnImpact(target, false);
-            document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on his own banana peel!`;
-            if (target.hp <= 0) beginKnockout(target, "was knocked out at 0 HP!");
-          } else {
-            hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
-            document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on a banana peel!`;
+      if (!projectile.visualOnly) {
+        for (let j = 0; j < fighterCount; j += 1) {
+          const target = fighters[j];
+          if (target.eliminated || target.portalEntry > 0 || target.respawn > 0 || target.invulnerable > 0) continue;
+          if (target === projectile.owner && projectile.armTimer > 0) continue;
+          const dx = projectile.mesh.position.x - target.x;
+          const dy = projectile.mesh.position.y - (target.y + 0.3);
+          const dz = projectile.mesh.position.z - target.z;
+          if (dx * dx + dy * dy + dz * dz < projectile.hitRadius * projectile.hitRadius) {
+            target.slipTimer = 0.85;
+            target.vy = 5.4;
+            target.grounded = false;
+            target.vx = (Math.abs(target.vx) > 0.5 ? Math.sign(target.vx) : target.facing) * 3.8;
+            if (target === projectile.owner) {
+              target.damage += 4;
+              target.hp = Math.max(0, target.hp - 4);
+              target.hitFlash = 0.25;
+              hudDirty = true;
+              spawnImpact(target, false);
+              document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on his own banana peel!`;
+              if (target.hp <= 0) beginKnockout(target, "was knocked out at 0 HP!");
+            } else {
+              hitTarget(projectile.owner, target, projectile.damage * projectile.power, projectile.force);
+              document.querySelector("#battle-status").textContent = `${characters[target.kind].name} slipped on a banana peel!`;
+            }
+            projectile.life = 0;
+            break;
           }
-          projectile.life = 0;
-          break;
         }
       }
     } else {
@@ -4327,7 +4345,7 @@ const cameraRig = {
   position: new THREE.Vector3(0, 7.6, 25.5)
 };
 // Alt + arrow keys orbit and zoom the camera; Alt + 0 resets it
-const cameraOrbit = { yaw: 0, zoom: 1 };
+const cameraOrbit = { yaw: 0, zoom: 1, targetZoom: 1, specialZoom: 0.55 };
 // Pointer position in -1..1 screen space, used to drift the menu camera
 const menuPointer = { x: 0, y: 0 };
 window.addEventListener("pointermove", (event) => {
@@ -4346,13 +4364,14 @@ function updateCameraOrbit(delta) {
   for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS"]) keys.delete(code);
   if (orbitLeft) cameraOrbit.yaw -= delta * 1.6;
   if (orbitRight) cameraOrbit.yaw += delta * 1.6;
-  if (zoomIn) cameraOrbit.zoom = Math.max(0.6, cameraOrbit.zoom - delta * 0.8);
-  if (zoomOut) cameraOrbit.zoom = Math.min(1.8, cameraOrbit.zoom + delta * 0.8);
+  if (zoomIn) cameraOrbit.targetZoom = Math.max(0.6, cameraOrbit.targetZoom - delta * 0.8);
+  if (zoomOut) cameraOrbit.targetZoom = Math.min(1.8, cameraOrbit.targetZoom + delta * 0.8);
   if (keys.has("Digit0")) {
     cameraOrbit.yaw = 0;
-    cameraOrbit.zoom = 1;
+    cameraOrbit.targetZoom = 1;
     keys.delete("Digit0");
   }
+  cameraOrbit.zoom = THREE.MathUtils.lerp(cameraOrbit.zoom, cameraOrbit.targetZoom, 1 - Math.exp(-6 * delta));
 }
 
 function placeCameraWithOrbit(focusX, focusZ, lookY, baseX, baseY, baseZ, cam = camera) {
