@@ -1665,10 +1665,10 @@ function createUniverseBackdrop() {
   const titleConfigs = Array.from({ length: 80 }, (_, index) => {
     const [color, glow] = titlePalette[index % titlePalette.length];
     return {
-      x: (Math.random() * 2 - 1) * 24,
-      y: (Math.random() * 2 - 1) * 11 - 1,
-      z: -16 - Math.random() * 34,
-      radius: 0.6 + Math.random() * 2.2,
+      x: (Math.random() * 2 - 1) * 20,
+      y: (Math.random() * 2 - 1) * 10 - 1,
+      z: -10 - Math.random() * 26,
+      radius: 1.4 + Math.random() * 3.0,
       color,
       glow,
       phase: Math.random() * Math.PI * 2
@@ -1688,7 +1688,7 @@ function createUniverseBackdrop() {
     planet.add(surface);
     planet.add(new THREE.Mesh(
       new THREE.SphereGeometry(config.radius * 1.08, 24, 18),
-      new THREE.MeshBasicMaterial({ color: config.glow, transparent: true, opacity: 0.12, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({ color: config.glow, transparent: true, opacity: 0.04, side: THREE.BackSide })
     ));
     const ring = new THREE.Mesh(
       new THREE.TorusGeometry(config.radius * 1.35, 0.075, 8, 64),
