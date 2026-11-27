@@ -2765,7 +2765,7 @@ function updateControlsHint() {
     return `P${index + 1} ${characters[kind].specialName} (${specialKeys[index]})`;
   }).join(" · ");
   const controls = battleMode === "explore"
-    ? "Flight: A/D or ←/→ turn · Q/E strafe · W/↑ thrust · S/↓ reverse · R/F pitch · Space rise · C descend · Shift or K boost · J fire · Alt+A/D orbit camera · Alt+W/S zoom · Touch: joystick to turn/thrust, buttons to rise, fire, boost or descend · find Entity.exe on the minimap"
+    ? "Flight: A/D or ←/→ turn · Q/E strafe · W/↑ thrust · S/↓ reverse · R/F pitch · Space rise · C descend · Shift or K boost · J fire · Alt+A/D orbit camera · Alt+W/S zoom · Drag mouse to orbit · Wheel to zoom · Touch: joystick to turn/thrust, buttons to rise, fire, boost or descend · find Entity.exe on the minimap"
     : battleMode === "split"
       ? "Split-screen 1v1: P1 WASD move · Space jump · J fight · K special | P2 Arrows move · Right Ctrl jump · Enter fight · Right Shift special"
       : battleMode === "cpu"
@@ -4371,32 +4371,55 @@ const cameraRig = {
   focus: new THREE.Vector3(0, 1.35, 0),
   position: new THREE.Vector3(0, 7.6, 25.5)
 };
-// Alt + arrow keys orbit and zoom the camera; Alt + 0 resets it
+// Alt + arrow keys orbit and zoom the camera; Alt + 0 resets it. Dragging the scene with the mouse also orbits, and the wheel zooms.
 const cameraOrbit = { yaw: 0, zoom: 1, targetZoom: 1, specialZoom: 0.55 };
+const cameraDrag = { pointerId: null, lastX: 0 };
 // Pointer position in -1..1 screen space, used to drift the menu camera
 const menuPointer = { x: 0, y: 0 };
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0 && event.button !== 2) return;
+  cameraDrag.pointerId = event.pointerId;
+  cameraDrag.lastX = event.clientX;
+});
+const endCameraDrag = (event) => {
+  if (event.pointerId === cameraDrag.pointerId) cameraDrag.pointerId = null;
+};
+window.addEventListener("pointerup", endCameraDrag);
+window.addEventListener("pointercancel", endCameraDrag);
+renderer.domElement.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  cameraOrbit.targetZoom = THREE.MathUtils.clamp(cameraOrbit.targetZoom + event.deltaY * 0.001, 0.6, 1.8);
+}, { passive: false });
 window.addEventListener("pointermove", (event) => {
   menuPointer.x = (event.clientX / window.innerWidth) * 2 - 1;
   menuPointer.y = (event.clientY / window.innerHeight) * 2 - 1;
+  if (event.pointerId === cameraDrag.pointerId) {
+    cameraOrbit.yaw -= (event.clientX - cameraDrag.lastX) * 0.008;
+    cameraDrag.lastX = event.clientX;
+  }
 });
 
 function updateCameraOrbit(delta) {
   const altHeld = keys.has("AltLeft") || keys.has("AltRight");
-  if (!altHeld) return;
-  // Arrow and WASD keys double as gameplay controls, so hide them from gameplay while orbiting
-  const orbitLeft = keys.has("ArrowLeft") || keys.has("KeyA");
-  const orbitRight = keys.has("ArrowRight") || keys.has("KeyD");
-  const zoomIn = keys.has("ArrowUp") || keys.has("KeyW");
-  const zoomOut = keys.has("ArrowDown") || keys.has("KeyS");
-  for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS"]) keys.delete(code);
-  if (orbitLeft) cameraOrbit.yaw -= delta * 1.6;
-  if (orbitRight) cameraOrbit.yaw += delta * 1.6;
-  if (zoomIn) cameraOrbit.targetZoom = Math.max(0.6, cameraOrbit.targetZoom - delta * 0.8);
-  if (zoomOut) cameraOrbit.targetZoom = Math.min(1.8, cameraOrbit.targetZoom + delta * 0.8);
-  if (keys.has("Digit0")) {
-    cameraOrbit.yaw = 0;
-    cameraOrbit.targetZoom = 1;
-    keys.delete("Digit0");
+  if (altHeld) {
+    // Arrow and WASD keys double as gameplay controls, so hide them from gameplay while orbiting
+    const orbitLeft = keys.has("ArrowLeft") || keys.has("KeyA");
+    const orbitRight = keys.has("ArrowRight") || keys.has("KeyD");
+    const zoomIn = keys.has("ArrowUp") || keys.has("KeyW");
+    const zoomOut = keys.has("ArrowDown") || keys.has("KeyS");
+    for (const code of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyA", "KeyD", "KeyW", "KeyS"]) keys.delete(code);
+    if (orbitLeft) cameraOrbit.yaw -= delta * 1.6;
+    if (orbitRight) cameraOrbit.yaw += delta * 1.6;
+    if (zoomIn) cameraOrbit.targetZoom = Math.max(0.6, cameraOrbit.targetZoom - delta * 0.8);
+    if (zoomOut) cameraOrbit.targetZoom = Math.min(1.8, cameraOrbit.targetZoom + delta * 0.8);
+    if (keys.has("Digit0")) {
+      cameraOrbit.yaw = 0;
+      cameraOrbit.targetZoom = 1;
+      keys.delete("Digit0");
+    }
+  } else if (explore && cameraDrag.pointerId === null) {
+    // Flight camera springs back behind the ship after a mouse drag
+    cameraOrbit.yaw = THREE.MathUtils.lerp(cameraOrbit.yaw, 0, 1 - Math.exp(-4 * delta));
   }
   cameraOrbit.zoom = THREE.MathUtils.lerp(cameraOrbit.zoom, cameraOrbit.targetZoom, 1 - Math.exp(-6 * delta));
 }
@@ -4764,18 +4787,6 @@ function createExploreWorld() {
     battlePlatforms.push({ mesh: platform, arenaIndex: arenaIdx, center: new THREE.Vector3(pos.x, pos.y, pos.z), radius: 2.5 });
   }
 
-  const battleMats = [
-    material("#72e0a2", 0.5, 0.1),
-    material("#ffd166", 0.5, 0.1),
-    material("#ff7189", 0.5, 0.1),
-    material("#7fd8ff", 0.5, 0.1)
-  ];
-  const sparkMat = new THREE.MeshBasicMaterial({ color: "#fff6a0" });
-  const battleBody = new THREE.CapsuleGeometry(0.42, 0.65, 3, 8);
-  const battleHead = new THREE.SphereGeometry(0.4, 8, 6);
-  const battleLimb = new THREE.BoxGeometry(0.22, 0.8, 0.22);
-  const battleSpark = new THREE.OctahedronGeometry(0.65, 0);
-  
   const observerShips = [];
   const buildObserverShip = (pos) => {
     const ship = new THREE.Group();
@@ -4794,31 +4805,6 @@ function createExploreWorld() {
     observerShips.push(buildObserverShip(pos));
   }
   
-  const buildDistantFighter = (color, x) => {
-    const fighter = new THREE.Group();
-    fighter.position.x = x;
-    addMesh(fighter, battleBody, color, [0, 1, 0]);
-    addMesh(fighter, battleHead, color, [0, 1.95, 0]);
-    for (const side of [-1, 1]) {
-      const arm = addMesh(fighter, battleLimb, color, [side * 0.6, 1.15, 0]);
-      arm.rotation.z = side * 0.65;
-      addMesh(fighter, battleLimb, color, [side * 0.25, 0.4, 0]);
-    }
-    return fighter;
-  };
-  const battles = [];
-  for (let index = 0; index < 6; index += 1) {
-    const planet = planets[1 + index * 2];
-    const pair = new THREE.Group();
-    pair.position.copy(planet.center).add(new THREE.Vector3(0, planet.radius, 0));
-    group.add(pair);
-    const left = buildDistantFighter(battleMats[index % 4], -1.6);
-    const right = buildDistantFighter(battleMats[(index + 1) % 4], 1.6);
-    pair.add(left, right);
-    const spark = addMesh(pair, battleSpark, sparkMat, [0, 1.6, 0]);
-    battles.push({ left, right, spark, center: pair.position.clone().add(new THREE.Vector3(0, 1.2, 0)), phase: index * 1.7, calm: 0 });
-  }
-
   const rivals = createRivals(group);
 
   const entityMesh = new THREE.Group();
@@ -4849,12 +4835,10 @@ function createExploreWorld() {
     planets,
     items,
     itemsFound: 0,
-    battles,
     obstacles,
     gates,
     battlePlatforms,
     observerShips,
-    sparkMat,
     bolts: [],
     boltGeometry: new THREE.SphereGeometry(0.35, 8, 6),
     playerBoltMat: new THREE.MeshBasicMaterial({ color: "#4ce9ff" }),
@@ -4926,7 +4910,6 @@ function disposeExploreWorld(world) {
   world.entityBoltMat.dispose();
   world.rivalBoltMat.dispose();
   world.blastGeometry.dispose();
-  world.sparkMat.dispose();
   arena.visible = world.arenaWasVisible;
   scene.background.copy(world.backgroundColor);
   scene.fog.color.copy(world.fogColor);
@@ -4934,27 +4917,6 @@ function disposeExploreWorld(world) {
   galaxyBackdrop.position.set(-3, 10, -43);
   camera.up.set(0, 1, 0);
   document.querySelector("#explore-minimap").hidden = true;
-}
-
-function updateExploreBattles(world, delta) {
-  world.battles.forEach((battle) => {
-    battle.calm = Math.max(0, battle.calm - delta);
-    const time = world.time + battle.phase;
-    if (battle.calm > 0) {
-      battle.left.position.x = -0.6;
-      battle.right.position.x = 0.6;
-      battle.spark.visible = true;
-      battle.spark.scale.setScalar(0.6);
-      return;
-    }
-    battle.left.position.x = -1.6 + Math.sin(time * 3) * 0.8;
-    battle.right.position.x = 1.6 - Math.sin(time * 3) * 0.8;
-    const flash = Math.max(0, Math.sin(time * 6));
-    battle.spark.visible = flash > 0.75;
-    battle.spark.scale.setScalar(0.6 + flash * 0.8);
-    battle.left.rotation.z = Math.sin(time * 3) * 0.2;
-    battle.right.rotation.z = -Math.sin(time * 3) * 0.2;
-  });
 }
 
 function updateExploreObstacles(world, delta) {
@@ -5093,11 +5055,6 @@ function drawExploreMinimap(world) {
     ctx.arc(x, y, Math.max(2.5, planet.radius * scale), 0, Math.PI * 2);
     ctx.fill();
   });
-  ctx.fillStyle = "#ff8fb1";
-  world.battles.forEach((battle) => {
-    const [x, y] = toMap(battle.center.x, battle.center.z);
-    ctx.fillRect(x - 2, y - 2, 4, 4);
-  });
   ctx.fillStyle = "#ffd166";
   world.items.forEach((item) => {
     if (item.taken) return;
@@ -5204,7 +5161,6 @@ function updateExploreBolts(world, delta) {
       };
       for (const planet of world.planets) consider("planet", planet, planet.center, planet.radius + 0.35);
       if (bolt.owner === "player") {
-        for (const battle of world.battles) consider("battle", battle, battle.center, 4);
         consider("entity", world.entityMesh, world.entityMesh.position, 3);
       } else if (world.hurtTimer <= 0) {
         consider("player", world.ship, world.position, 1.3);
@@ -5416,7 +5372,6 @@ function updateExplore(delta) {
   updateExploreBolts(world, delta);
   updateRivals(world, delta);
   updateExploreBlasts(world, delta);
-  updateExploreBattles(world, delta);
   updateExploreItems(world, delta);
   updateExploreObserverShips(world, delta);
   collectExploreItems(world);
@@ -5432,7 +5387,8 @@ function updateExplore(delta) {
     endExplore(true);
   }
 
-  const desired = world.position.clone().addScaledVector(world.forward, -10).addScaledVector(world.up, 4);
+  const backDir = world.forward.clone().negate().applyAxisAngle(world.up, cameraOrbit.yaw);
+  const desired = world.position.clone().addScaledVector(backDir, 10 * cameraOrbit.zoom).addScaledVector(world.up, 4);
   world.camPos.lerp(desired, 1 - Math.exp(-6 * delta));
   camera.clearViewOffset();
   camera.up.copy(world.up);
