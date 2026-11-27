@@ -1654,20 +1654,34 @@ function createUniverseBackdrop() {
   scene.add(sky);
 
   titlePlanets = new THREE.Group();
-  for (const config of [
-    { x: -19, y: 7, z: -17, radius: 3.1, color: "#754caa", glow: "#c5a1ff", phase: 0 },
-    { x: 19, y: -2.5, z: -21, radius: 2.45, color: "#287d9c", glow: "#78eaff", phase: 2.4 },
-    { x: -25, y: -3.5, z: -28, radius: 1.55, color: "#8a4c65", glow: "#ff9b9f", phase: 1.1 },
-    { x: 25, y: 10, z: -34, radius: 1.8, color: "#426b55", glow: "#9affc1", phase: 3.5 },
-    { x: -11, y: 12.5, z: -41, radius: 1.05, color: "#a17c43", glow: "#ffe097", phase: 5.2 },
-    { x: 12, y: -8.5, z: -38, radius: 1.25, color: "#515e9b", glow: "#a5baff", phase: 4.3 }
-  ]) {
+  const titlePalette = [
+    ["#754caa", "#c5a1ff"],
+    ["#287d9c", "#78eaff"],
+    ["#8a4c65", "#ff9b9f"],
+    ["#426b55", "#9affc1"],
+    ["#a17c43", "#ffe097"],
+    ["#515e9b", "#a5baff"]
+  ];
+  const titleConfigs = Array.from({ length: 80 }, (_, index) => {
+    const [color, glow] = titlePalette[index % titlePalette.length];
+    return {
+      x: (Math.random() * 2 - 1) * 24,
+      y: (Math.random() * 2 - 1) * 11 - 1,
+      z: -16 - Math.random() * 34,
+      radius: 0.6 + Math.random() * 2.2,
+      color,
+      glow,
+      phase: Math.random() * Math.PI * 2
+    };
+  });
+  for (const config of titleConfigs) {
     const planet = new THREE.Group();
     planet.position.set(config.x, config.y, config.z);
     planet.userData.basePosition = planet.position.clone();
     planet.userData.phase = config.phase;
+    const detailed = config.radius > 1.5;
     const surface = new THREE.Mesh(
-      new THREE.SphereGeometry(config.radius, 28, 20),
+      new THREE.SphereGeometry(config.radius, detailed ? 28 : 16, detailed ? 20 : 12),
       material(config.color, 0.76, 0.08, { emissive: config.glow, emissiveIntensity: 0.35 })
     );
     surface.userData.spin = config.radius > 3 ? 0.16 : -0.2;
@@ -4559,7 +4573,7 @@ function animatePortal(elapsed, delta) {
   animateSpaceBattle(elapsed);
   const onMenuScreen = titleScreenActive || selectionScreenActive;
   spaceBattle.visible = false;
-  titlePlanets.visible = false;
+  titlePlanets.visible = onMenuScreen;
   starField.visible = explore && !onMenuScreen;
   galaxyBackdrop.visible = explore && !onMenuScreen;
   if (titlePlanets.visible) {
