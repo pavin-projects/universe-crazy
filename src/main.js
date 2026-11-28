@@ -1662,17 +1662,50 @@ function createUniverseBackdrop() {
     ["#a17c43", "#ffe097"],
     ["#515e9b", "#a5baff"]
   ];
-  const titleConfigs = Array.from({ length: 80 }, (_, index) => {
+  const titleConfigs = [];
+  const titleCamPos = new THREE.Vector3(0, 10.8, 25.5);
+  const titleForward = new THREE.Vector3(0, 1.4, 0).sub(titleCamPos).normalize();
+  const titleRight = new THREE.Vector3().crossVectors(titleForward, new THREE.Vector3(0, 1, 0)).normalize();
+  const titleUp = new THREE.Vector3().crossVectors(titleRight, titleForward).normalize();
+  const titleHalfTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const titleAspect = window.innerWidth / window.innerHeight;
+  // Jittered grid over the view so planets spread across the screen instead of clumping
+  const cols = 9;
+  const rows = 7;
+  const cells = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < cols; col += 1) {
+      const u = -1.2 + ((col + 0.2 + Math.random() * 0.6) / cols) * 2.4;
+      const v = -1.05 + ((row + 0.2 + Math.random() * 0.6) / rows) * 2.1;
+      if (Math.abs(u) < 0.34 && Math.abs(v) < 0.3) continue;
+      cells.push({ u, v });
+    }
+  }
+  for (let i = cells.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cells[i], cells[j]] = [cells[j], cells[i]];
+  }
+  const placed = cells.slice(0, 40).map(({ u, v }) => {
+    const depth = 18 + Math.random() * 16;
+    const radius = depth * (0.035 + Math.random() * 0.012);
+    const center = titleCamPos.clone()
+      .addScaledVector(titleForward, depth)
+      .addScaledVector(titleRight, u * depth * titleHalfTan * titleAspect)
+      .addScaledVector(titleUp, v * depth * titleHalfTan);
+    return { center, radius };
+  });
+  placed.forEach(({ center, radius }, index) => {
     const [color, glow] = titlePalette[index % titlePalette.length];
-    return {
-      x: (Math.random() * 2 - 1) * 20,
-      y: (Math.random() * 2 - 1) * 10 - 1,
-      z: -10 - Math.random() * 26,
-      radius: 1.4 + Math.random() * 3.0,
+    titleConfigs.push({
+      center,
+      radius,
+      x: center.x,
+      y: center.y,
+      z: center.z,
       color,
       glow,
       phase: Math.random() * Math.PI * 2
-    };
+    });
   });
   for (const config of titleConfigs) {
     const planet = new THREE.Group();
@@ -1714,10 +1747,10 @@ function createSpaceBattle() {
   spaceBattle = new THREE.Group();
   scene.add(spaceBattle);
   const shipConfigs = [
-    { x: -25, y: 8, z: -35, direction: 1, speed: 1.9, color: "#77eaff", phase: 0.2 },
-    { x: -9, y: 12, z: -44, direction: 1, speed: 1.3, color: "#8effd0", phase: 2.4 },
-    { x: 25, y: 4, z: -38, direction: -1, speed: 1.7, color: "#ff81bc", phase: 1.1 },
-    { x: 10, y: 10, z: -47, direction: -1, speed: 1.45, color: "#ffb56e", phase: 4.1 }
+    { x: -20, y: 4, z: 17, direction: 1, speed: 6.5, color: "#77eaff", phase: 0.2, scale: 2.1 },
+    { x: 6, y: 9, z: 6, direction: -1, speed: 3.2, color: "#8effd0", phase: 2.4, scale: 1.4 },
+    { x: 22, y: 2, z: 13, direction: -1, speed: 5.2, color: "#ff81bc", phase: 1.1, scale: 1.8 },
+    { x: -8, y: 11, z: -6, direction: 1, speed: 2.4, color: "#ffb56e", phase: 4.1, scale: 1.1 }
   ];
   shipConfigs.forEach((config) => {
     const ship = new THREE.Group();
@@ -1730,7 +1763,7 @@ function createSpaceBattle() {
     wings.rotation.y = 0.16;
     addMesh(ship, new THREE.SphereGeometry(0.12, 8, 6), engineMaterial, [-0.76, 0, 0]);
     ship.position.set(config.x, config.y, config.z);
-    ship.rotation.y = config.direction > 0 ? 0 : Math.PI;
+    ship.scale.setScalar(config.scale);
     spaceBattle.add(ship);
     backgroundShips.push({ ...config, group: ship });
   });
@@ -2694,7 +2727,7 @@ function makeFighter(kind, index, spawnIndex = index) {
   return {
     kind, visual, x, y: 0.08, z, swordTier, spawnIndex,
     vx: 0, vy: 0, vz: 0, facing: x < 0 ? 1 : -1,
-    hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0, specialStartTime: 0,
+    hp: 100, damage: 0, stocks: kind === "entity" ? 4 : 3, grounded: true, cooldown: 0, specialCooldown: 0,
     invulnerable: index === 0 && secretChallengeActive ? 2.5 : 0,
     attackPose: 0, kickPose: 0, poseTimer: 0, crouching: false, hitFlash: 0, slipTimer: 0, powerBoost: 0, respawn: 0, falling: false, eliminated: false,
     cpuThinkTime: Math.random() * 0.25, cpuStuckTime: 0, cpuDodgeTime: 0, cpuDodgeDir: 1, cpuLastX: x, cpuLastZ: z,
@@ -2788,6 +2821,8 @@ function updateControlsHint() {
   document.querySelector("#controls-hint").textContent = controls;
   document.querySelector("#match-control-hint").textContent = controls;
 }
+
+const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
 
 function setExploreTouchControls(active) {
   const labels = [
@@ -2906,7 +2941,7 @@ function startMatch(opponentOverride = null, randomizeArena = false) {
   document.querySelector("#match-end").hidden = true;
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
-  document.querySelector("#touch-controls").hidden = false;
+  document.querySelector("#touch-controls").hidden = !isTouchDevice;
   document.querySelector("#battle-hud").classList.remove("explore-hud");
   setExploreTouchControls(false);
   updateArenaLabel();
@@ -2985,6 +3020,8 @@ function showPortal() {
   clearInputState();
   restoreFromSecretRealm();
   arena.visible = false;
+  // The title camera orbits the arena's origin, so a leftover galaxy platform offset would push it away from the planets
+  arena.position.set(0, 0, 0);
   matchActive = false;
   document.querySelector("#select-screen").hidden = true;
   document.querySelector("#arena-strip").hidden = true;
@@ -3687,8 +3724,6 @@ function attack(fighter, target, special = false) {
     fighter.cooldown = 0.55;
     fighter.attackPose = 0.55;
     fighter.specialCooldown = 4;
-    fighter.specialStartTime = 0.18;
-    cameraOrbit.targetZoom = cameraOrbit.specialZoom;
     useSpecialAbility(fighter);
     return;
   }
@@ -3912,9 +3947,6 @@ function updateFighter(fighter, index, delta, elapsed) {
   }
   fighter.cooldown = Math.max(0, fighter.cooldown - delta);
   fighter.specialCooldown = Math.max(0, fighter.specialCooldown - delta);
-  if (fighter.specialCooldown > 0 && fighter.specialCooldown < 3.75) {
-    cameraOrbit.targetZoom = THREE.MathUtils.lerp(cameraOrbit.specialZoom, 1, 1 - fighter.specialCooldown / 3.75);
-  }
   fighter.invulnerable = Math.max(0, fighter.invulnerable - delta);
   fighter.attackPose = Math.max(0, fighter.attackPose - delta);
   fighter.kickPose = Math.max(0, fighter.kickPose - delta);
@@ -3975,8 +4007,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     return;
   }
 
-  if (!portalIntroActive && fighter.slipTimer <= 0 && fighter.specialStartTime <= 0) readInput(fighter, index, delta);
-  fighter.specialStartTime = Math.max(0, fighter.specialStartTime - delta);
+  if (!portalIntroActive && fighter.slipTimer <= 0) readInput(fighter, index, delta);
   if (fighter.respawn > 0) return;
   const wasGrounded = fighter.grounded;
   const previousY = fighter.y;
@@ -4087,7 +4118,7 @@ function updateFighter(fighter, index, delta, elapsed) {
     fighter.grounded = true;
   }
 
-  if (edgeDistance > floorRadius * 0.88 && fighter.specialStartTime <= 0) {
+  if (edgeDistance > floorRadius * 0.88) {
     const pushStrength = (edgeDistance - floorRadius * 0.88) * 2.4;
     if (edgeDistance > 0.1) {
       fighter.vx -= (fighter.x / edgeDistance) * pushStrength;
@@ -4386,7 +4417,7 @@ const cameraRig = {
   position: new THREE.Vector3(0, 7.6, 25.5)
 };
 // Alt + arrow keys orbit and zoom the camera; Alt + 0 resets it. Dragging the scene with the mouse also orbits, and the wheel zooms.
-const cameraOrbit = { yaw: 0, zoom: 1, targetZoom: 1, specialZoom: 0.55 };
+const cameraOrbit = { yaw: 0, zoom: 1, targetZoom: 1, idle: 0 };
 const cameraDrag = { pointerId: null, lastX: 0 };
 // Pointer position in -1..1 screen space, used to drift the menu camera
 const menuPointer = { x: 0, y: 0 };
@@ -4394,6 +4425,7 @@ renderer.domElement.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 && event.button !== 2) return;
   cameraDrag.pointerId = event.pointerId;
   cameraDrag.lastX = event.clientX;
+  cameraOrbit.idle = 0;
 });
 const endCameraDrag = (event) => {
   if (event.pointerId === cameraDrag.pointerId) cameraDrag.pointerId = null;
@@ -4402,6 +4434,7 @@ window.addEventListener("pointerup", endCameraDrag);
 window.addEventListener("pointercancel", endCameraDrag);
 renderer.domElement.addEventListener("wheel", (event) => {
   event.preventDefault();
+  cameraOrbit.idle = 0;
   cameraOrbit.targetZoom = THREE.MathUtils.clamp(cameraOrbit.targetZoom + event.deltaY * 0.001, 0.6, 1.8);
 }, { passive: false });
 window.addEventListener("pointermove", (event) => {
@@ -4410,12 +4443,14 @@ window.addEventListener("pointermove", (event) => {
   if (event.pointerId === cameraDrag.pointerId) {
     cameraOrbit.yaw -= (event.clientX - cameraDrag.lastX) * 0.008;
     cameraDrag.lastX = event.clientX;
+    cameraOrbit.idle = 0;
   }
 });
 
 function updateCameraOrbit(delta) {
   const altHeld = keys.has("AltLeft") || keys.has("AltRight");
   if (altHeld) {
+    cameraOrbit.idle = 0;
     // Arrow and WASD keys double as gameplay controls, so hide them from gameplay while orbiting
     const orbitLeft = keys.has("ArrowLeft") || keys.has("KeyA");
     const orbitRight = keys.has("ArrowRight") || keys.has("KeyD");
@@ -4431,9 +4466,11 @@ function updateCameraOrbit(delta) {
       cameraOrbit.targetZoom = 1;
       keys.delete("Digit0");
     }
-  } else if (explore && cameraDrag.pointerId === null) {
-    // Flight camera springs back behind the ship after a mouse drag
-    cameraOrbit.yaw = THREE.MathUtils.lerp(cameraOrbit.yaw, 0, 1 - Math.exp(-4 * delta));
+  }
+  cameraOrbit.idle += delta;
+  // Flight camera keeps a player-chosen orbit angle, and only drifts back behind the ship after a few idle seconds
+  if (explore && !altHeld && cameraDrag.pointerId === null && cameraOrbit.idle > 1.2) {
+    cameraOrbit.yaw = THREE.MathUtils.lerp(cameraOrbit.yaw, 0, 1 - Math.exp(-1.5 * delta));
   }
   cameraOrbit.zoom = THREE.MathUtils.lerp(cameraOrbit.zoom, cameraOrbit.targetZoom, 1 - Math.exp(-6 * delta));
 }
@@ -4572,8 +4609,8 @@ function animatePortal(elapsed, delta) {
   galaxyBackdrop.children[0].material.opacity = 0.62 + Math.sin(elapsed * 1.1) * 0.12;
   animateSpaceBattle(elapsed);
   const onMenuScreen = titleScreenActive || selectionScreenActive;
-  spaceBattle.visible = false;
-  titlePlanets.visible = onMenuScreen;
+  spaceBattle.visible = titleScreenActive;
+  titlePlanets.visible = titleScreenActive;
   starField.visible = explore && !onMenuScreen;
   galaxyBackdrop.visible = explore && !onMenuScreen;
   if (titlePlanets.visible) {
@@ -4590,6 +4627,7 @@ function animatePortal(elapsed, delta) {
   }
   if (arena.visible) {
     arenaPlanets.forEach((planet) => {
+      planet.group.visible = !selectionScreenActive;
       planet.orbitAngle += delta * planet.orbitSpeed;
       planet.group.position.x = planet.x + Math.sin(planet.orbitAngle) * planet.orbitRadius;
       planet.group.position.y = planet.y + Math.sin(elapsed * planet.drift + planet.phase) * 0.42;
@@ -4819,6 +4857,35 @@ function createExploreWorld() {
     observerShips.push(buildObserverShip(pos));
   }
   
+  const blackHoles = [];
+  const blackHoleCore = new THREE.MeshBasicMaterial({ color: "#000000" });
+  const blackHoleHalo = new THREE.MeshBasicMaterial({ color: "#8a5cff", transparent: true, opacity: 0.22, side: THREE.BackSide, depthWrite: false });
+  const blackHoleDiskMaterial = new THREE.MeshBasicMaterial({ color: "#ff9a3c", transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+  const blackHoleCoreGeometry = new THREE.SphereGeometry(2.2, 24, 16);
+  const blackHoleHaloGeometry = new THREE.SphereGeometry(3.4, 24, 16);
+  const blackHoleDiskGeometry = new THREE.RingGeometry(3.4, 8.5, 64);
+  for (let index = 2; index < planets.length; index += 4) {
+    const host = planets[index];
+    const offset = new THREE.Vector3(Math.cos(index * 1.7), 0.35, Math.sin(index * 1.7)).normalize().multiplyScalar(host.radius + 14);
+    const center = host.center.clone().add(offset);
+    const destination = planets[(index + 7) % planets.length];
+    const hole = new THREE.Group();
+    hole.position.copy(center);
+    addMesh(hole, blackHoleCoreGeometry, blackHoleCore, [0, 0, 0]);
+    addMesh(hole, blackHoleHaloGeometry, blackHoleHalo, [0, 0, 0]);
+    const disk = addMesh(hole, blackHoleDiskGeometry, blackHoleDiskMaterial, [0, 0, 0]);
+    disk.rotation.x = Math.PI / 2.6;
+    group.add(hole);
+    blackHoles.push({
+      group: hole,
+      disk,
+      center,
+      pullRadius: 16,
+      eventRadius: 2.2,
+      exit: destination.center.clone().add(new THREE.Vector3(0, destination.radius + 6, 0))
+    });
+  }
+
   const rivals = createRivals(group);
 
   const entityMesh = new THREE.Group();
@@ -4834,8 +4901,9 @@ function createExploreWorld() {
     ship,
     thruster,
     exhaust,
-    position: planets[0].center.clone().add(new THREE.Vector3(0, planets[0].radius + 1.4, 0)),
+    position: new THREE.Vector3(0, 24, 0),
     previousPosition: new THREE.Vector3(),
+    camPos: new THREE.Vector3(0, 28, 10),
     velocity: new THREE.Vector3(),
     forward: new THREE.Vector3(0, 0, -1),
     up: new THREE.Vector3(0, 1, 0),
@@ -4851,6 +4919,8 @@ function createExploreWorld() {
     itemsFound: 0,
     obstacles,
     gates,
+    blackHoles,
+    blackHoleCooldown: 0,
     battlePlatforms,
     observerShips,
     bolts: [],
@@ -4869,7 +4939,6 @@ function createExploreWorld() {
     teleportTimer: 5,
     glitch: 0,
     time: 0,
-    camPos: new THREE.Vector3(0, 5.2, 9),
     status: "",
     minimapTimer: 0,
     over: false
@@ -4896,7 +4965,7 @@ function startExplore() {
   document.querySelector("#return-through-portal").hidden = true;
   document.querySelector("#battle-hud").hidden = false;
   document.querySelector("#battle-hud").classList.add("explore-hud");
-  document.querySelector("#touch-controls").hidden = false;
+  document.querySelector("#touch-controls").hidden = !isTouchDevice;
   setExploreTouchControls(true);
   document.querySelectorAll('[id^="player-"][id$="-panel"]').forEach((panel) => {
     panel.hidden = true;
@@ -4951,6 +5020,26 @@ function updateExploreObstacles(world, delta) {
     gate.passed = true;
     gate.mesh.scale.setScalar(1.25);
     world.hull = Math.min(100, world.hull + 6);
+  });
+}
+
+function updateExploreBlackHoles(world, delta) {
+  world.blackHoleCooldown = Math.max(0, world.blackHoleCooldown - delta);
+  world.blackHoles.forEach((hole) => {
+    hole.disk.rotation.z += delta * 0.8;
+    const toCenter = hole.center.clone().sub(world.position);
+    const distance = toCenter.length();
+    if (distance > hole.pullRadius) return;
+    if (world.blackHoleCooldown <= 0 && distance < hole.eventRadius + 1) {
+      world.previousPosition.copy(hole.exit);
+      world.position.copy(hole.exit);
+      world.velocity.set(0, 0, 0);
+      world.blackHoleCooldown = 2;
+      world.hull = Math.min(100, world.hull + 4);
+      return;
+    }
+    const pull = (1 - distance / hole.pullRadius) * 14 * delta;
+    world.velocity.addScaledVector(toCenter.normalize(), pull);
   });
 }
 
@@ -5010,7 +5099,7 @@ function resolveExplorePlanets(world) {
   for (const planet of world.planets) {
     const offset = world.position.clone().sub(planet.center);
     const distance = offset.length();
-    const minimum = planet.radius + 1.2;
+    const minimum = planet.radius + EXPLORE_PLANET_CLEARANCE;
     if (distance >= minimum) continue;
     const normal = distance > 0.001 ? offset.normalize() : new THREE.Vector3(0, 1, 0);
     world.position.copy(planet.center).addScaledVector(normal, minimum);
@@ -5022,6 +5111,8 @@ function resolveExplorePlanets(world) {
     }
   }
 }
+
+const EXPLORE_PLANET_CLEARANCE = 2.2;
 
 const EXPLORE_BOUNDS = 260;
 
@@ -5336,6 +5427,35 @@ function enterBattleFromExploration(arenaIdx) {
   clearExplore();
 }
 
+const CAMERA_PLANET_MARGIN = 1;
+const CAMERA_MIN_SHIP_DISTANCE = 4;
+
+// Chase camera target: behind the ship along its full 3D heading (so it tilts with pitch), rotated by the orbit yaw
+function exploreChaseTarget(world) {
+  const back = world.forward.clone().negate().applyAxisAngle(world.up, cameraOrbit.yaw);
+  return world.position.clone().addScaledVector(back, 10 * cameraOrbit.zoom).addScaledVector(world.up, 4);
+}
+
+// Pulls the camera toward the ship when a planet sits between them, so the rocket is never hidden
+function pullCameraOutOfPlanets(camPos, shipPos, planets) {
+  const seg = camPos.clone().sub(shipPos);
+  const len = seg.length();
+  if (len < 0.001) return;
+  const dir = seg.divideScalar(len);
+  let limit = len;
+  for (const planet of planets) {
+    const toCenter = planet.center.clone().sub(shipPos);
+    const along = toCenter.dot(dir);
+    if (along <= 0) continue;
+    const radius = planet.radius + CAMERA_PLANET_MARGIN;
+    const perpSq = toCenter.lengthSq() - along * along;
+    if (perpSq >= radius * radius) continue;
+    const hit = Math.max(CAMERA_MIN_SHIP_DISTANCE, along - Math.sqrt(radius * radius - perpSq));
+    if (hit < limit) limit = hit;
+  }
+  if (limit < len) camPos.copy(shipPos).addScaledVector(dir, limit);
+}
+
 function updateExplore(delta) {
   const world = explore;
   world.time += delta;
@@ -5364,7 +5484,7 @@ function updateExplore(delta) {
   resolveExploreBounds(world);
   resolveExplorePlanets(world);
   updateExploreObstacles(world, delta);
-
+  updateExploreBlackHoles(world, delta);
   world.ship.position.copy(world.position);
   starField.position.copy(world.position);
   galaxyBackdrop.position.set(world.position.x - 3, world.position.y + 10, world.position.z - 100);
@@ -5401,14 +5521,12 @@ function updateExplore(delta) {
     endExplore(true);
   }
 
-  const backDir = world.forward.clone().negate().applyAxisAngle(world.up, cameraOrbit.yaw);
-  const desired = world.position.clone().addScaledVector(backDir, 10 * cameraOrbit.zoom).addScaledVector(world.up, 4);
-  world.camPos.lerp(desired, 1 - Math.exp(-6 * delta));
+  world.camPos.lerp(exploreChaseTarget(world), 1 - Math.exp(-8 * delta));
+  pullCameraOutOfPlanets(world.camPos, world.position, world.planets);
   camera.clearViewOffset();
   camera.up.copy(world.up);
   camera.position.copy(world.camPos);
-  camera.lookAt(world.position.clone().addScaledVector(world.forward, 4).addScaledVector(world.up, 1));
-
+  camera.lookAt(world.position.clone().addScaledVector(world.forward, 1.5));
   const rivalsAlive = world.rivals.filter((rival) => rival.alive).length;
   const status = `ENTITY.EXE ${Math.ceil(world.entityHp)}/${EXPLORE_ENTITY_MAX_HP} · HULL ${Math.ceil(world.hull)}% · ITEMS ${world.itemsFound}/${EXPLORE_ITEM_COUNT} · RIVALS ${rivalsAlive} · KILLS ${world.kills} · SURVIVED ${Math.floor(world.time)}s`;
   world.minimapTimer -= delta;

@@ -355,7 +355,9 @@ export async function handleHttp(req, res) {
   }
 }
 
-const wss = new WebSocketServer({ noServer: true });
+const MAX_SOCKET_PAYLOAD_BYTES = 64 * 1024;
+
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_SOCKET_PAYLOAD_BYTES });
 
 // Returns false when the request is not for the game socket.
 export function handleUpgrade(req, socket, head) {
@@ -380,7 +382,15 @@ export function handleUpgrade(req, socket, head) {
 wss.on("connection", (ws) => {
   sockets.add(ws);
   if (lobby) send(ws, lobbyState(ws));
-  ws.on("message", (raw) => handleSocketMessage(ws, raw));
+  ws.on("message", (raw) => {
+    try {
+      handleSocketMessage(ws, raw);
+    } catch (error) {
+      console.error("Socket message failed:", error);
+    }
+  });
+  // Without an error listener, a broken socket would crash the whole server and every match on it
+  ws.on("error", (error) => console.error("Socket error:", error.message));
   ws.on("close", () => {
     sockets.delete(ws);
     leaveLobby(ws);
